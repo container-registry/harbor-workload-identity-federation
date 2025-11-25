@@ -1,0 +1,63 @@
+name: Create Image and Push Using federated IDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # 👈 required for OIDC JWT
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get OIDC token
+        id: oidc
+        run: |
+          #echo "Requesting OIDC token"
+          #RESPONSE=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          #"${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=my-registry")
+          #
+          #echo "Full response: $RESPONSE"
+          #echo "Sending response to webhook..."
+          #curl -X POST ${{ secrets.WEBHOOK_URL }} \
+          #  -H "Content-Type: application/json" \
+          #  -d "{\"response\": \"${RESPONSE}\"}"
+          #
+          #TOKEN=$(echo "$RESPONSE" | jq -r '.value')
+          #
+          #echo "Sending token to webhook..."
+          #curl -X POST ${{ secrets.WEBHOOK_URL }} \
+          #  -H "Content-Type: application/json" \
+          #  -d "{\"token\": \"${TOKEN}\"}"
+          #
+          ## echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+          ## echo "token=$TOKEN" >> "$GITHUB_SUMMARY"
+          #echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+
+          # Pretty print the JWT token (header and payload)
+          echo "=== JWT Header ==="
+          echo "$TOKEN" | cut -d'.' -f1 | base64 -d 2>/dev/null | jq .
+          echo ""
+          echo "=== JWT Payload ==="
+          echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+
+      # - name: Docker login using OIDC JWT
+      #   run: |
+      #     # 3️⃣ Perform docker login using the base64-encoded JWT
+      #     echo "$B64_TOKEN" | base64 -d | \
+      #     docker login silly-snyder.container-registry.com \
+      #       -u "jwt" --password-stdin
+
+      - name: Build Immage
+        run: |
+          echo $TOKEN | docker login -u not-relevant --password-stdin macfly4200.8gears.ch
+          docker build -t macfly4200.8gears.ch/library/image:${{ github.sha }} .
+
+      - name: Pull image from registry
+        run: |
+          # 4️⃣ Try pulling the private image
+          docker pull silly-snyder.container-registry.com/library/alpine:latest
