@@ -31,8 +31,8 @@ This example demonstrates how to authenticate to Harbor from a GitHub Actions wo
 
 1. **Harbor Setup**: Configure a Federated Identity Provider in Harbor:
    - OpenID Configuration URL: `https://token.actions.githubusercontent.com/.well-known/openid-configuration`
-   - JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
-   - Issuer: `https://token.actions.githubusercontent.com`
+   - JWKS URI: Automatically discovered
+   - Issuer: Automatically discovered
 
    ![Harbor Federated IDP Setup](images/harbor-federated-idp-setup.png)
 
@@ -188,8 +188,8 @@ This example demonstrates how to authenticate to Harbor from a GitLab CI pipelin
 
 1. **Harbor Setup**: Configure a Federated Identity Provider in Harbor:
    - OpenID Configuration URL: `https://gitlab.com/.well-known/openid-configuration`
-   - JWKS URI: `https://gitlab.com/oauth/discovery/keys`
-   - Issuer: `https://gitlab.com`
+   - JWKS URI: Automatically discovered 
+   - Issuer: Automatically discovered
 
 2. **Robot Account**: Create a federated robot account in Harbor with claim rules matching your GitLab project:
    - `iss`: `https://gitlab.com`
@@ -213,21 +213,15 @@ build-and-push:
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
-  before_script:
-    - apk add --no-cache curl jq
   script:
-    - echo "Using GitLab OIDC token"
-
     # Login to registry using JWT token
     - echo "$ID_TOKEN" | docker login -u not-relevant --password-stdin <your-registry-domain>
 
-    # Build image
+    # Build and push image
     - docker build -t <your-registry-domain>/library/image:$CI_COMMIT_SHA .
-
-    # Pull image from registry
-    - docker pull <your-registry-domain>/library/hello-world:latest
+    - docker push <your-registry-domain>/library/image:$CI_COMMIT_SHA
   rules:
-    - when: manual  # 👈 trigger manually, or use other rules
+    - when: manual
 ```
 
 ### Key Points
@@ -260,7 +254,7 @@ Here's an example of what a GitLab CI OIDC token looks like:
 }
 ```
 
-**JWT Payload:**
+** GitLab JWT Payload:**
 ```json
 {
   "project_id": "76366029",
@@ -269,7 +263,7 @@ Here's an example of what a GitLab CI OIDC token looks like:
   "namespace_path": "8gears/container-registry",
   "user_id": "907142",
   "user_login": "vad1mo",
-  "user_email": "bauer.vadim@gmail.com",
+  "user_email": "vaba@gmail.com",
   "user_access_level": "owner",
   "pipeline_id": "2179265456",
   "pipeline_source": "push",
