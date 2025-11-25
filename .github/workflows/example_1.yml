@@ -31,19 +31,12 @@ jobs:
           echo "=== JWT Payload ==="
           echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
 
-      # - name: Docker login using OIDC JWT
-      #   run: |
-      #     # 3️⃣ Perform docker login using the base64-encoded JWT
-      #     echo "$B64_TOKEN" | base64 -d | \
-      #     docker login silly-snyder.container-registry.com \
-      #       -u "jwt" --password-stdin
-
-      - name: Build Immage
+      - name: Build and Push Image
         run: |
           echo $TOKEN | docker login -u not-relevant --password-stdin macfly4200.8gears.ch
           docker build -t macfly4200.8gears.ch/library/image:${{ github.sha }} .
 
-      - name: Pull image from registry
+      - name: Pull Image from Registry
         run: |
-          # 4️⃣ Try pulling the private image
-          docker pull silly-snyder.container-registry.com/library/alpine:latest
+          echo $TOKEN | docker login -u not-relevant --password-stdin macfly4200.8gears.ch
+          docker pull macfly4200.8gears.ch/library/hello-world:latest
