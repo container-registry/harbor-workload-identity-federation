@@ -29,14 +29,15 @@ build-and-push:
       PAYLOAD_PADDED="${PAYLOAD}$(printf '%*s' $((4 - ${#PAYLOAD} % 4)) '' | tr ' ' '=')"
       echo "$PAYLOAD_PADDED" | base64 -d | jq .
 
-    # Build and push image using remote buildkitd with JWT auth
-    - docker buildx create --use --name remote --driver remote ${BUILDKIT_HOST}
+    # Create Docker config with JWT token for registry auth
+    - mkdir -p ~/.docker
     - |
-      docker buildx build --push \
-        --registry-auth='macfly4200.8gears.ch={"username":"not-relevant","password":"'"$ID_TOKEN"'"}' \
-        -t macfly4200.8gears.ch/library/image:$CI_COMMIT_SHA .
+      AUTH=$(echo -n "not-relevant:${ID_TOKEN}" | base64 | tr -d '\n')
+      echo "{\"auths\":{\"macfly4200.8gears.ch\":{\"auth\":\"${AUTH}\"}}}" > ~/.docker/config.json
 
-    # Pull image from registry
-    - docker pull macfly4200.8gears.ch/library/hello-world:latest
-  rules:
-    - when: manual
+    # Build and push image using remote buildkitd
+    - docker buildx create --use --name remote --driver remote ${BUILDKIT_HOST}
+    - docker buildx build --push -t macfly4200.8gears.ch/library/image:$CI_COMMIT_SHA .
+
+    # Verify image was pushed by inspecting it
+    - docker buildx imagetools inspect macfly4200.8gears.ch/library/image:$CI_COMMIT_SHA
