@@ -19,7 +19,7 @@ jobs:
         run: |
           echo "Requesting OIDC token"
           RESPONSE=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=my-registry")
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=macfly4200.8gears.ch")
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.value')
           echo "TOKEN=$TOKEN" >> $GITHUB_ENV
