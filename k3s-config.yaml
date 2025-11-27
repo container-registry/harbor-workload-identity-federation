@@ -1,0 +1,2 @@
+image-credential-provider-config: "/etc/kubernetes/credential-providers/config.yaml"
+image-credential-provider-bin-dir: "/etc/kubernetes/credential-providers"

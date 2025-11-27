@@ -1,0 +1,33 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: credential-provider-test
+servers: 1
+agents: 0
+image: rancher/k3s:v1.34.2-k3s1
+volumes:
+  # Mount the credential provider binary to k3s default path
+  - volume: /Users/vadim/Development/container-registry/federated-idp-examples/linux-arm64/credential-provider-plugin:/var/lib/rancher/credentialprovider/bin/credential-provider-echo-token-silly
+    nodeFilters:
+      - all
+  # Mount the credential provider config to k3s default path
+  - volume: /Users/vadim/Development/container-registry/federated-idp-examples/k8s_credential_provider_config.yaml:/var/lib/rancher/credentialprovider/config.yaml
+    nodeFilters:
+      - all
+options:
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+      # Allow the macfly4200.8gears.ch audience for service account tokens
+      - arg: --kube-apiserver-arg=api-audiences=https://kubernetes.default.svc.cluster.local,macfly4200.8gears.ch
+        nodeFilters:
+          - server:*
+      # Enable the feature gate for service account tokens in credential providers
+      - arg: --kube-apiserver-arg=feature-gates=ServiceAccountNodeAudienceRestriction=true
+        nodeFilters:
+          - server:*
+      - arg: --kubelet-arg=feature-gates=KubeletServiceAccountTokenForCredentialProviders=true
+        nodeFilters:
+          - server:*

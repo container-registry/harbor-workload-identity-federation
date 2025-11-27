@@ -1,6 +1,6 @@
-# Federated Identity Provider Examples
+# Workload Identity Federation Examples to Push/Pull container Images Without Secrets
 
-Examples demonstrating how to use Harbor/8gears Container Registry with Workload Identity Federation, eliminating the need for static secrets in CI/CD pipelines and Kubernetes.
+Repository with examples demonstrating how to use Harbor/8gears Container Registry with Workload Identity Federation, eliminating the need for static secrets in CI/CD pipelines and Kubernetes.
 
 ## Overview
 
@@ -313,6 +313,187 @@ Here's an example of what a GitLab CI OIDC token looks like:
 3. **Robot Account Matching**: Harbor matches the token's claims against configured claim rules to identify the appropriate robot account.
 
 4. **Authorization**: Once matched, the request is authorized based on the robot account's permissions.
+
+---
+
+## Kubernetes (k3s/k3d) Setup
+
+This section describes how to set up a local k3s/k3d cluster with Kubernetes Image Credential Provider to pull images using Service Account tokens (Workload Identity Federation).
+
+### Prerequisites
+
+- Docker installed
+- k3d installed (`brew install k3d` or see [k3d.io](https://k3d.io))
+- kubectl installed
+- The `credential-provider-plugin` binary for your architecture (linux-amd64 or linux-arm64)
+
+### 1. Create k3d Configuration
+
+Create `k3d-config.yaml`:
+
+```yaml
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: credential-provider-test
+servers: 1
+agents: 0
+image: rancher/k3s:v1.34.2-k3s1
+volumes:
+  # Mount the credential provider binary
+  - volume: /path/to/linux-arm64/credential-provider-plugin:/var/lib/rancher/credentialprovider/bin/credential-provider-plugin
+    nodeFilters:
+      - all
+  # Mount the credential provider config
+  - volume: /path/to/k8s_credential_provider_config.yaml:/var/lib/rancher/credentialprovider/config.yaml
+    nodeFilters:
+      - all
+options:
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+      # Allow your registry as an audience for service account tokens
+      - arg: --kube-apiserver-arg=api-audiences=https://kubernetes.default.svc.cluster.local,<your-registry-domain>
+        nodeFilters:
+          - server:*
+      # Enable feature gates for credential providers with SA tokens
+      - arg: --kube-apiserver-arg=feature-gates=ServiceAccountNodeAudienceRestriction=true
+        nodeFilters:
+          - server:*
+      - arg: --kubelet-arg=feature-gates=KubeletServiceAccountTokenForCredentialProviders=true
+        nodeFilters:
+          - server:*
+```
+
+### 2. Create Credential Provider Configuration
+
+Create `k8s_credential_provider_config.yaml`:
+
+```yaml
+kind: CredentialProviderConfig
+apiVersion: kubelet.config.k8s.io/v1
+providers:
+  - name: credential-provider-plugin
+    apiVersion: credentialprovider.kubelet.k8s.io/v1
+    tokenAttributes:
+      requireServiceAccount: true
+      serviceAccountTokenAudience: "<your-registry-domain>"
+      cacheType: Token
+    matchImages:
+      - "<your-registry-domain>"
+    defaultCacheDuration: "1h"
+```
+
+### 3. Create the Cluster
+
+```bash
+# Create the cluster
+k3d cluster create --config k3d-config.yaml
+
+# Get kubeconfig
+k3d kubeconfig get credential-provider-test > kubeconfig.yaml
+export KUBECONFIG=kubeconfig.yaml
+```
+
+### 4. Export JWKS for Harbor
+
+Export the cluster's JWKS keys for configuring Harbor's Federated IDP:
+
+```bash
+# Get the OIDC discovery document
+kubectl get --raw /.well-known/openid-configuration | jq .
+
+# Get the JWKS keys
+kubectl get --raw /openid/v1/jwks | jq . > jwks.json
+```
+
+### 5. Configure Harbor Federated IDP
+
+1. In Harbor, go to **Administration** → **Robot Accounts** → **Federated Identity Providers**
+2. Create a new Federated IDP with:
+   - **Issuer**: `https://kubernetes.default.svc.cluster.local`
+   - **JWKS**: Paste the contents of `jwks.json`
+3. Create a robot account with claim rules:
+   - `iss == https://kubernetes.default.svc.cluster.local`
+   - `aud == <your-registry-domain>`
+   - `kubernetes.io.namespace == <namespace>` (optional, for namespace-scoped access)
+
+### 6. Create Service Account and Test Pod
+
+```bash
+# Create a service account
+kubectl create serviceaccount test-pull
+
+# Create a test pod with projected volume for the audience
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-harbor
+  namespace: default
+spec:
+  serviceAccountName: test-pull
+  containers:
+  - name: test-harbor
+    image: <your-registry-domain>/library/hello-world:latest
+    volumeMounts:
+    - name: harbor-token
+      mountPath: /var/run/secrets/harbor
+      readOnly: true
+  volumes:
+  - name: harbor-token
+    projected:
+      sources:
+      - serviceAccountToken:
+          audience: <your-registry-domain>
+          expirationSeconds: 3600
+          path: token
+EOF
+```
+
+### Key Points
+
+1. **Feature Gates**: Both `ServiceAccountNodeAudienceRestriction` (API server) and `KubeletServiceAccountTokenForCredentialProviders` (kubelet) must be enabled.
+
+2. **Projected Volume**: The pod MUST have a projected volume with the audience matching your registry. Without this, kubelet cannot request tokens for that audience.
+
+3. **Credential Provider Plugin**: The `credential-provider-plugin` binary receives the SA token from kubelet and returns it as credentials for the registry.
+
+4. **JWKS Rotation**: If you recreate the cluster, new signing keys are generated. You must update Harbor's Federated IDP with the new JWKS.
+
+### Example JWT Token
+
+A Kubernetes Service Account token for image pulls looks like:
+
+```json
+{
+  "aud": ["macfly4200.8gears.ch"],
+  "exp": 1764255017,
+  "iat": 1764251417,
+  "iss": "https://kubernetes.default.svc.cluster.local",
+  "jti": "5e8572b6-4e27-4039-8fc5-dcdd85ade4e1",
+  "kubernetes.io": {
+    "namespace": "default",
+    "serviceaccount": {
+      "name": "test-pull",
+      "uid": "238dbbbe-4d7c-4efe-bd03-957c547c8daa"
+    }
+  },
+  "nbf": 1764251417,
+  "sub": "system:serviceaccount:default:test-pull"
+}
+```
+
+**Key claims for Harbor claim rules:**
+| Claim | Description | Example Value |
+|-------|-------------|---------------|
+| `iss` | Token issuer | `https://kubernetes.default.svc.cluster.local` |
+| `aud` | Target audience (your registry) | `macfly4200.8gears.ch` |
+| `sub` | Subject identifier | `system:serviceaccount:default:test-pull` |
+| `kubernetes.io.namespace` | Kubernetes namespace | `default` |
+| `kubernetes.io.serviceaccount.name` | Service account name | `test-pull` |
 
 ---
 
