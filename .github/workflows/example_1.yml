@@ -35,8 +35,9 @@ jobs:
         run: |
           echo $TOKEN | docker login -u not-relevant --password-stdin silly-snyder.container-registry.com
           docker build -t silly-snyder.container-registry.com/library/image:${{ github.sha }} .
+          docker push silly-snyder.container-registry.com/library/image:${{ github.sha }}
 
       - name: Pull Image from Registry
         run: |
           echo $TOKEN | docker login -u not-relevant --password-stdin silly-snyder.container-registry.com
-          docker pull silly-snyder.container-registry.com/library/hello-world:latest
+          docker pull silly-snyder.container-registry.com/library/image:${{ github.sha }}
