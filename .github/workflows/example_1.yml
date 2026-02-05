@@ -19,7 +19,7 @@ jobs:
         run: |
           echo "Requesting OIDC token"
           RESPONSE=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=macfly4200.8gears.ch")
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=silly-snyder.container-registry.com")
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.value')
           echo "TOKEN=$TOKEN" >> $GITHUB_ENV
@@ -33,10 +33,10 @@ jobs:
 
       - name: Build and Push Image
         run: |
-          echo $TOKEN | docker login -u not-relevant --password-stdin macfly4200.8gears.ch
-          docker build -t macfly4200.8gears.ch/library/image:${{ github.sha }} .
+          echo $TOKEN | docker login -u not-relevant --password-stdin silly-snyder.container-registry.com
+          docker build -t silly-snyder.container-registry.com/library/image:${{ github.sha }} .
 
       - name: Pull Image from Registry
         run: |
-          echo $TOKEN | docker login -u not-relevant --password-stdin macfly4200.8gears.ch
-          docker pull macfly4200.8gears.ch/library/hello-world:latest
+          echo $TOKEN | docker login -u not-relevant --password-stdin silly-snyder.container-registry.com
+          docker pull silly-snyder.container-registry.com/library/hello-world:latest
