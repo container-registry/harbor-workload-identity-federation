@@ -1,0 +1,18 @@
+apiVersion: v2
+name: credential-provider-harbor
+description: Deploy the credential-provider-harbor binary to Kubernetes nodes for Harbor Workload Identity Federation
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - harbor
+  - credential-provider
+  - workload-identity
+  - fedidp
+  - kubernetes
+  - kubelet
+maintainers:
+  - name: container-registry
+home: https://github.com/container-registry/harbor-workload-identity-federation
+sources:
+  - https://github.com/container-registry/harbor-workload-identity-federation

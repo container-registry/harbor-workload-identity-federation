@@ -1,0 +1,77 @@
+version: '3'
+
+vars:
+  APP: credential-provider-harbor
+  MODULE: github.com/container-registry/harbor-workload-identity-federation
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  REGISTRY: registry.goharbor.io/harbor-workload-identity-federation
+  IMAGE_NAME: credential-provider-harbor-deployer
+
+tasks:
+  default:
+    desc: Build the credential-provider-harbor binary
+    cmds:
+      - task: build
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -race -v ./...
+
+  build:
+    desc: Build binary for current platform
+    sources:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+    generates:
+      - './bin/{{.APP}}'
+    cmds:
+      - go build -ldflags="-s -w -X main.version={{.VERSION}}"
+          -o bin/{{.APP}} ./cmd/{{.APP}}/
+
+  build-all:
+    desc: Cross-compile for linux/amd64 and linux/arm64
+    cmds:
+      - for:
+          matrix:
+            GOOS: [linux]
+            GOARCH: [amd64, arm64]
+        cmd: >-
+          CGO_ENABLED=0 GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}}
+          go build -ldflags="-s -w -X main.version={{.VERSION}}"
+          -o bin/{{.APP}}-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
+          ./cmd/{{.APP}}/
+
+  docker-build:
+    desc: Build multi-arch Docker image (local)
+    cmds:
+      - docker buildx build --platform linux/amd64,linux/arm64
+          --build-arg VERSION={{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:latest .
+
+  docker-push:
+    desc: Build and push multi-arch Docker image
+    cmds:
+      - docker buildx build --platform linux/amd64,linux/arm64
+          --build-arg VERSION={{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:latest
+          --push .
+
+  helm-lint:
+    desc: Lint the Helm chart
+    cmds:
+      - helm lint deploy/helm/credential-provider-harbor/
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin/

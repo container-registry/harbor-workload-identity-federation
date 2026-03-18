@@ -1,0 +1,145 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "credential-provider-harbor.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "credential-provider-harbor.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "credential-provider-harbor.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "credential-provider-harbor.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      hostPID: true
+      hostNetwork: true
+      serviceAccountName: {{ include "credential-provider-harbor.serviceAccountName" . }}
+      containers:
+      - name: deployer
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        securityContext:
+          privileged: true
+        env:
+        - name: REGISTRY_HOST
+          value: {{ required "registry.host is required" .Values.registry.host | quote }}
+        - name: REGISTRY_AUDIENCE
+          value: {{ include "credential-provider-harbor.audience" . | quote }}
+        - name: REGISTRY_USERNAME
+          value: {{ .Values.registry.username | quote }}
+        - name: CACHE_DURATION
+          value: {{ .Values.registry.cacheDuration | quote }}
+        - name: BIN_DIR
+          value: {{ .Values.credentialProvider.binDir | quote }}
+        - name: CONFIG_DIR
+          value: {{ .Values.credentialProvider.configDir | quote }}
+        - name: RESTART_KUBELET
+          value: {{ .Values.kubelet.restart | quote }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+
+          HOST_BIN_DIR="/host${BIN_DIR}"
+          HOST_CONFIG_DIR="/host${CONFIG_DIR}"
+          BINARY_NAME="credential-provider-harbor"
+          INSTALLED_MARKER="/host/var/run/${BINARY_NAME}-installed"
+
+          echo "=== credential-provider-harbor deployer ==="
+          echo "Registry:   ${REGISTRY_HOST}"
+          echo "Audience:   ${REGISTRY_AUDIENCE}"
+          echo "Bin dir:    ${HOST_BIN_DIR}"
+          echo "Config dir: ${HOST_CONFIG_DIR}"
+          echo ""
+
+          # Check if already installed
+          if [ -f "${INSTALLED_MARKER}" ] && [ -f "${HOST_BIN_DIR}/${BINARY_NAME}" ]; then
+            if [ -f "${HOST_CONFIG_DIR}/credential-provider-config.yaml" ]; then
+              echo "Credential provider already installed. Sleeping..."
+              exec sleep infinity
+            fi
+          fi
+
+          echo "Installing credential provider..."
+
+          # Ensure directories exist on host
+          mkdir -p "${HOST_BIN_DIR}"
+          mkdir -p "${HOST_CONFIG_DIR}"
+
+          # Copy binary from this container image to the host
+          cp /${BINARY_NAME} "${HOST_BIN_DIR}/${BINARY_NAME}"
+          chmod +x "${HOST_BIN_DIR}/${BINARY_NAME}"
+          echo "Binary installed: ${HOST_BIN_DIR}/${BINARY_NAME}"
+
+          # Create credential provider config on the host
+          cat > "${HOST_CONFIG_DIR}/credential-provider-config.yaml" <<EOF
+          kind: CredentialProviderConfig
+          apiVersion: kubelet.config.k8s.io/v1
+          providers:
+          - name: ${BINARY_NAME}
+            apiVersion: credentialprovider.kubelet.k8s.io/v1
+            tokenAttributes:
+              requireServiceAccount: true
+              serviceAccountTokenAudience: "${REGISTRY_AUDIENCE}"
+              cacheType: Token
+            matchImages:
+            - "${REGISTRY_HOST}"
+            defaultCacheDuration: "${CACHE_DURATION}"
+            args:
+            - "--username=${REGISTRY_USERNAME}"
+          EOF
+          echo "Config written: ${HOST_CONFIG_DIR}/credential-provider-config.yaml"
+
+          # Restart kubelet if enabled
+          if [ "${RESTART_KUBELET}" = "true" ]; then
+            echo "Restarting kubelet..."
+            nsenter -t 1 -m -u -i -n -p -- systemctl restart kubelet
+            echo "Kubelet restarted."
+          else
+            echo "Kubelet restart disabled. Configure kubelet flags manually:"
+            echo "  --image-credential-provider-bin-dir=${BIN_DIR}"
+            echo "  --image-credential-provider-config=${CONFIG_DIR}/credential-provider-config.yaml"
+          fi
+
+          # Mark as installed
+          touch "${INSTALLED_MARKER}"
+
+          echo ""
+          echo "=== Installation complete ==="
+          echo "Binary: ${BIN_DIR}/${BINARY_NAME}"
+          echo "Config: ${CONFIG_DIR}/credential-provider-config.yaml"
+
+          # Keep running to maintain DaemonSet
+          exec sleep infinity
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - name: host-root
+          mountPath: /host
+        - name: host-run
+          mountPath: /host/var/run
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory
+      - name: host-run
+        hostPath:
+          path: /var/run
+          type: DirectoryOrCreate
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

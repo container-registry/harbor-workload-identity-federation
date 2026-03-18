@@ -1,0 +1,78 @@
+# credential-provider-harbor Helm Chart Values
+
+# -- Deployer image containing the credential-provider-harbor binary
+image:
+  # -- Container registry and repository
+  repository: registry.goharbor.io/harbor-workload-identity-federation/credential-provider-harbor-deployer
+  # -- Image tag (defaults to Chart.appVersion)
+  tag: ""
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets
+imagePullSecrets: []
+
+# -- Override chart name
+nameOverride: ""
+# -- Override full release name
+fullnameOverride: ""
+
+# Harbor registry configuration
+registry:
+  # -- Harbor registry hostname (REQUIRED). Used for matchImages in credential provider config.
+  host: ""
+  # -- Token audience (defaults to registry.host if empty)
+  audience: ""
+  # -- Cache duration for credentials
+  cacheDuration: "1h"
+  # -- Username for registry credentials
+  username: "jwt"
+
+# Credential provider paths on the host node
+credentialProvider:
+  # -- Directory on the host to place the credential-provider-harbor binary
+  binDir: "/usr/local/bin/credential-providers"
+  # -- Directory on the host to place the credential provider config file
+  configDir: "/etc/kubernetes/credential-providers"
+
+# Kubelet configuration
+kubelet:
+  # -- Whether to restart kubelet after installing the credential provider.
+  # Set to false if you prefer rolling node replacement.
+  restart: false
+
+# RBAC configuration
+rbac:
+  # -- Create ClusterRole and ClusterRoleBinding for the deployer
+  create: true
+
+# ServiceAccount configuration
+serviceAccount:
+  # -- Create a ServiceAccount for the deployer
+  create: true
+  # -- ServiceAccount annotations
+  annotations: {}
+  # -- ServiceAccount name (auto-generated if empty)
+  name: ""
+
+# -- Pod annotations
+podAnnotations: {}
+
+# -- Container resources
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 50m
+  #   memory: 64Mi
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Tolerations (defaults to run on all nodes including control plane)
+tolerations:
+  - operator: Exists
+
+# -- Namespace to install into
+namespace: kube-system
