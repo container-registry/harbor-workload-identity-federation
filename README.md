@@ -31,9 +31,57 @@ The kubelet calls this binary via stdin/stdout protocol: it receives a `Credenti
 
 ### Installation
 
-There are two ways to install the credential provider binary on kubelet nodes:
+The recommended install path is the Helm chart. It runs a privileged DaemonSet on every node, copies the credential provider binary onto the host, writes or merges the kubelet credential provider config, creates the node audience RBAC, configures kubelet where the selected profile supports it, and restarts kubelet by default.
 
-#### Method 1: Direct Binary
+```bash
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --create-namespace \
+  --set registry.host=<your-registry-domain>
+```
+
+Select a platform profile when the default generic kubelet paths are not right for your cluster:
+
+| Profile | Use case | Host config path |
+|---------|----------|------------------|
+| `generic` | kubeadm/systemd nodes | `/etc/kubernetes/credential-providers/config.yaml` |
+| `eks` or `aws` | Amazon EKS AL2023 nodes | `/etc/eks/image-credential-provider/config.json` |
+| `k3s` or `k3d` | k3s/k3d nodes | `/var/lib/rancher/credentialprovider/config.yaml` |
+| `kind` | KIND node containers | `/var/lib/kubelet/credential-provider-config.yaml` |
+| `gke` | GKE Standard best-effort | generic kubelet paths |
+| `custom` | Explicit paths via values | user-provided |
+
+Examples:
+
+```bash
+# EKS AL2023. Preserves the existing ECR credential provider entry.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --set profile=eks \
+  --set registry.host=<your-registry-domain>
+
+# k3s/k3d.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --set profile=k3s \
+  --set registry.host=<your-registry-domain>
+
+# Install files but do not restart kubelet.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --set registry.host=<your-registry-domain> \
+  --set kubelet.restart=false
+```
+
+GKE Autopilot is not supported because it does not allow the privileged host access required to install kubelet credential provider binaries.
+
+#### Direct Binary
+
+You can also install the binary manually on each node.
 
 Download the binary from [GitHub Releases](https://github.com/container-registry/harbor-workload-identity-federation/releases) and place it on each node.
 
@@ -51,7 +99,7 @@ sudo mv credential-provider-harbor /usr/local/bin/credential-providers/
 Create the credential provider config:
 
 ```yaml
-# /etc/kubernetes/credential-providers/credential-provider-config.yaml
+# /etc/kubernetes/credential-providers/config.yaml
 kind: CredentialProviderConfig
 apiVersion: kubelet.config.k8s.io/v1
 providers:
@@ -72,24 +120,8 @@ Configure kubelet flags:
 
 ```
 --image-credential-provider-bin-dir=/usr/local/bin/credential-providers
---image-credential-provider-config=/etc/kubernetes/credential-providers/credential-provider-config.yaml
+--image-credential-provider-config=/etc/kubernetes/credential-providers/config.yaml
 ```
-
-#### Method 2: Helm Chart (DaemonSet Deployer)
-
-Install the deployer DaemonSet which automatically places the binary and config on every node:
-
-```bash
-helm install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
-  --namespace kube-system \
-  --set registry.host=<your-registry-domain>
-```
-
-The DaemonSet runs as a privileged container that:
-1. Copies the `credential-provider-harbor` binary from the container image to the host filesystem
-2. Creates the `CredentialProviderConfig` YAML on the host
-3. Optionally restarts kubelet (`--set kubelet.restart=true`)
 
 See [`deploy/helm/credential-provider-harbor/values.yaml`](deploy/helm/credential-provider-harbor/values.yaml) for all configurable values.
 

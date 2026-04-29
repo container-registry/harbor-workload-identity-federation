@@ -5,27 +5,40 @@ on each node and create the kubelet credential provider configuration.
 
 Registry:  {{ .Values.registry.host }}
 Audience:  {{ include "credential-provider-harbor.audience" . }}
-Bin dir:   {{ .Values.credentialProvider.binDir }}
-Config:    {{ .Values.credentialProvider.configDir }}/credential-provider-config.yaml
+Profile:   {{ .Values.profile }}
+
+The selected profile controls default host paths:
+  generic/gke/custom: /usr/local/bin/credential-providers and /etc/kubernetes/credential-providers/config.yaml
+  eks/aws:            /etc/eks/image-credential-provider and /etc/eks/image-credential-provider/config.json
+  k3s/k3d:            /var/lib/rancher/credentialprovider/bin and /var/lib/rancher/credentialprovider/config.yaml
+  kind:               /var/lib/kubelet/credential-provider and /var/lib/kubelet/credential-provider-config.yaml
 
 To check the status of the deployer:
 
   kubectl get daemonset {{ include "credential-provider-harbor.fullname" . }} -n {{ .Values.namespace }}
   kubectl logs -l app.kubernetes.io/name={{ include "credential-provider-harbor.name" . }} -n {{ .Values.namespace }}
 
-{{- if not .Values.kubelet.restart }}
+{{- if not .Values.kubelet.configure }}
 
-IMPORTANT: Kubelet restart is disabled. You must configure the kubelet
-on each node to use the credential provider:
+IMPORTANT: Kubelet configuration is disabled. You must configure the kubelet
+on each node to use the installed credential provider paths for your profile:
 
-  --image-credential-provider-bin-dir={{ .Values.credentialProvider.binDir }}
-  --image-credential-provider-config={{ .Values.credentialProvider.configDir }}/credential-provider-config.yaml
+  --image-credential-provider-bin-dir=<profile bin dir>
+  --image-credential-provider-config=<profile config path>
+
+{{- else if not .Values.kubelet.restart }}
+
+IMPORTANT: Kubelet restart is disabled. Restart or roll nodes before testing image pulls.
 
 {{- end }}
 
 Don't forget to apply the RBAC for audience token requests:
 
-  See examples/kubernetes/rbac-audience.yaml in the repository.
+{{- if .Values.nodeAudienceRbac.create }}
+  The chart created {{ include "credential-provider-harbor.nodeAudienceRoleName" . }} for {{ include "credential-provider-harbor.audience" . }}.
+{{- else }}
+  Apply examples/kubernetes/rbac-audience.yaml or enable nodeAudienceRbac.create.
+{{- end }}
 
 To verify image pulling works:
 

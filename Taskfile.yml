@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   APP: credential-provider-harbor
+  INSTALLER: credential-provider-harbor-installer
   MODULE: github.com/container-registry/harbor-workload-identity-federation
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
@@ -10,7 +11,7 @@ vars:
 
 tasks:
   default:
-    desc: Build the credential-provider-harbor binary
+    desc: Build the credential-provider-harbor binaries
     cmds:
       - task: build
 
@@ -25,16 +26,19 @@ tasks:
       - go test -race -v ./...
 
   build:
-    desc: Build binary for current platform
+    desc: Build binaries for current platform
     sources:
       - '**/*.go'
       - go.mod
       - go.sum
     generates:
       - './bin/{{.APP}}'
+      - './bin/{{.INSTALLER}}'
     cmds:
       - go build -ldflags="-s -w -X main.version={{.VERSION}}"
           -o bin/{{.APP}} ./cmd/{{.APP}}/
+      - go build -ldflags="-s -w"
+          -o bin/{{.INSTALLER}} ./cmd/{{.INSTALLER}}/
 
   build-all:
     desc: Cross-compile for linux/amd64 and linux/arm64
@@ -48,6 +52,15 @@ tasks:
           go build -ldflags="-s -w -X main.version={{.VERSION}}"
           -o bin/{{.APP}}-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
           ./cmd/{{.APP}}/
+      - for:
+          matrix:
+            GOOS: [linux]
+            GOARCH: [amd64, arm64]
+        cmd: >-
+          CGO_ENABLED=0 GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}}
+          go build -ldflags="-s -w"
+          -o bin/{{.INSTALLER}}-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
+          ./cmd/{{.INSTALLER}}/
 
   docker-build:
     desc: Build multi-arch Docker image (local)
@@ -69,7 +82,16 @@ tasks:
   helm-lint:
     desc: Lint the Helm chart
     cmds:
-      - helm lint deploy/helm/credential-provider-harbor/
+      - helm lint deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com
+
+  helm-template:
+    desc: Render the Helm chart for supported profiles
+    cmds:
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=generic >/dev/null
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=eks >/dev/null
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=k3s >/dev/null
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=kind >/dev/null
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=gke >/dev/null
 
   clean:
     desc: Clean build artifacts

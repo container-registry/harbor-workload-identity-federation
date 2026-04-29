@@ -65,3 +65,10 @@ Registry audience (defaults to registry.host).
 {{- define "credential-provider-harbor.audience" -}}
 {{- default .Values.registry.host .Values.registry.audience }}
 {{- end }}
+
+{{/*
+Node audience RBAC resource name.
+*/}}
+{{- define "credential-provider-harbor.nodeAudienceRoleName" -}}
+{{- default (printf "%s-node-audience-token" (include "credential-provider-harbor.fullname" .)) .Values.nodeAudienceRbac.name | trunc 63 | trimSuffix "-" }}
+{{- end }}

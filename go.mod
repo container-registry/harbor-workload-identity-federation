@@ -6,6 +6,7 @@ require (
 	golang.org/x/term v0.37.0
 	k8s.io/apimachinery v0.34.2
 	k8s.io/kubelet v0.34.2
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (

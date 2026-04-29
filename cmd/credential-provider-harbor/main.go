@@ -24,7 +24,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"golang.org/x/term"
 
@@ -112,10 +111,9 @@ func handle(username string, stdin io.Reader, stdout io.Writer) error {
 	registry := registryHost(request.Image)
 
 	response := &v1.CredentialProviderResponse{
-		TypeMeta:      metav1.TypeMeta{APIVersion: v1.SchemeGroupVersion.String(), Kind: "CredentialProviderResponse"},
-		CacheKeyType:  v1.ImagePluginCacheKeyType,
-		CacheDuration: &metav1.Duration{Duration: time.Hour * 1},
-		Auth:          map[string]v1.AuthConfig{registry: {Username: username, Password: request.ServiceAccountToken}},
+		TypeMeta:     metav1.TypeMeta{APIVersion: v1.SchemeGroupVersion.String(), Kind: "CredentialProviderResponse"},
+		CacheKeyType: v1.ImagePluginCacheKeyType,
+		Auth:         map[string]v1.AuthConfig{registry: {Username: username, Password: request.ServiceAccountToken}},
 	}
 	return json.NewEncoder(stdout).Encode(response)
 }

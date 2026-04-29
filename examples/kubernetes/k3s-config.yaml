@@ -1,2 +1,2 @@
-image-credential-provider-config: "/etc/kubernetes/credential-providers/config.yaml"
-image-credential-provider-bin-dir: "/etc/kubernetes/credential-providers"
+image-credential-provider-config: "/var/lib/rancher/credentialprovider/config.yaml"
+image-credential-provider-bin-dir: "/var/lib/rancher/credentialprovider/bin"

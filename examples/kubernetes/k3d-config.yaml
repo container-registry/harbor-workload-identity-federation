@@ -7,11 +7,11 @@ agents: 0
 image: rancher/k3s:v1.34.2-k3s1
 volumes:
   # Mount the credential provider binary to k3s default path
-  - volume: /Users/vadim/Development/container-registry/federated-idp-examples/linux-arm64/credential-provider-plugin:/var/lib/rancher/credentialprovider/bin/credential-provider-echo-token-silly
+  - volume: /path/to/credential-provider-harbor:/var/lib/rancher/credentialprovider/bin/credential-provider-harbor
     nodeFilters:
       - all
   # Mount the credential provider config to k3s default path
-  - volume: /Users/vadim/Development/container-registry/federated-idp-examples/k8s_credential_provider_config.yaml:/var/lib/rancher/credentialprovider/config.yaml
+  - volume: /path/to/k8s_credential_provider_config.yaml:/var/lib/rancher/credentialprovider/config.yaml
     nodeFilters:
       - all
 options:

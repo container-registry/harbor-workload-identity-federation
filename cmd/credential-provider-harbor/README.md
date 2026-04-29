@@ -38,9 +38,14 @@ To configure this credential plugin on a node:
     matchImages:
     - "" # TODO: replace with your Harbor registry hostname(s)
 
+    defaultCacheDuration: "1h"
+
     # optionally specify the username to include in registry credentials, default is "jwt"
     args:
     - "--username=jwt"
+
+   defaultCacheDuration controls credential caching. The binary does not set a
+   response cache duration, so kubelet uses this value from the config.
 
   3. Adjust the kubelet startup flags to point at that configuration file:
 

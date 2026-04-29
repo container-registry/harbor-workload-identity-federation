@@ -1,0 +1,31 @@
+{{- if .Values.nodeAudienceRbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "credential-provider-harbor.nodeAudienceRoleName" . }}
+  labels:
+    {{- include "credential-provider-harbor.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - {{ required "registry.host is required" (include "credential-provider-harbor.audience" .) | quote }}
+    verbs:
+      - request-serviceaccounts-token-audience
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "credential-provider-harbor.nodeAudienceRoleName" . }}
+  labels:
+    {{- include "credential-provider-harbor.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "credential-provider-harbor.nodeAudienceRoleName" . }}
+subjects:
+  {{- range .Values.nodeAudienceRbac.groups }}
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ . | quote }}
+  {{- end }}
+{{- end }}
