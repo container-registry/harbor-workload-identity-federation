@@ -111,9 +111,10 @@ func handle(username string, stdin io.Reader, stdout io.Writer) error {
 	registry := registryHost(request.Image)
 
 	response := &v1.CredentialProviderResponse{
-		TypeMeta:     metav1.TypeMeta{APIVersion: v1.SchemeGroupVersion.String(), Kind: "CredentialProviderResponse"},
-		CacheKeyType: v1.RegistryPluginCacheKeyType,
-		Auth:         map[string]v1.AuthConfig{registry: {Username: username, Password: request.ServiceAccountToken}},
+		TypeMeta:      metav1.TypeMeta{APIVersion: v1.SchemeGroupVersion.String(), Kind: "CredentialProviderResponse"},
+		CacheKeyType:  v1.RegistryPluginCacheKeyType,
+		CacheDuration: &metav1.Duration{},
+		Auth:          map[string]v1.AuthConfig{registry: {Username: username, Password: request.ServiceAccountToken}},
 	}
 	return json.NewEncoder(stdout).Encode(response)
 }

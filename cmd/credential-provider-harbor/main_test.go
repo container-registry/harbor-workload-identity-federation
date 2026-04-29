@@ -39,8 +39,8 @@ func TestHandleReturnsTokenCredentials(t *testing.T) {
 	if response.CacheKeyType != v1.RegistryPluginCacheKeyType {
 		t.Errorf("CacheKeyType = %q, want %q", response.CacheKeyType, v1.RegistryPluginCacheKeyType)
 	}
-	if response.CacheDuration != nil {
-		t.Errorf("CacheDuration = %v, want nil so kubelet defaultCacheDuration is used", response.CacheDuration)
+	if response.CacheDuration == nil || response.CacheDuration.Duration != 0 {
+		t.Errorf("CacheDuration = %v, want 0 so kubelet does not cache pass-through tokens", response.CacheDuration)
 	}
 
 	auth, ok := response.Auth["harbor.example.com"]

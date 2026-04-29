@@ -44,8 +44,9 @@ To configure this credential plugin on a node:
     args:
     - "--username=jwt"
 
-   defaultCacheDuration controls credential caching. The binary does not set a
-   response cache duration, so kubelet uses this value from the config.
+   defaultCacheDuration is required by the kubelet config API. The binary returns
+   a zero cache duration because it passes service account tokens through as the
+   registry password.
 
   3. Adjust the kubelet startup flags to point at that configuration file:
 
