@@ -93,6 +93,7 @@ curl -Lo credential-provider-harbor \
 chmod +x credential-provider-harbor
 
 # Place it in the credential provider directory
+sudo mkdir -p /usr/local/bin/credential-providers
 sudo mv credential-provider-harbor /usr/local/bin/credential-providers/
 ```
 

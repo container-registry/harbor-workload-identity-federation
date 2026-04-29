@@ -60,6 +60,13 @@ ServiceAccount name.
 {{- end }}
 
 {{/*
+Namespace for namespaced resources.
+*/}}
+{{- define "credential-provider-harbor.namespace" -}}
+{{- default .Release.Namespace .Values.namespace }}
+{{- end }}
+
+{{/*
 Registry audience (defaults to registry.host).
 */}}
 {{- define "credential-provider-harbor.audience" -}}

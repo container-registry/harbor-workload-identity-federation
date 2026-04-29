@@ -36,8 +36,8 @@ func TestHandleReturnsTokenCredentials(t *testing.T) {
 	if response.Kind != "CredentialProviderResponse" {
 		t.Errorf("Kind = %q, want CredentialProviderResponse", response.Kind)
 	}
-	if response.CacheKeyType != v1.ImagePluginCacheKeyType {
-		t.Errorf("CacheKeyType = %q, want %q", response.CacheKeyType, v1.ImagePluginCacheKeyType)
+	if response.CacheKeyType != v1.RegistryPluginCacheKeyType {
+		t.Errorf("CacheKeyType = %q, want %q", response.CacheKeyType, v1.RegistryPluginCacheKeyType)
 	}
 	if response.CacheDuration != nil {
 		t.Errorf("CacheDuration = %v, want nil so kubelet defaultCacheDuration is used", response.CacheDuration)

@@ -15,8 +15,8 @@ The selected profile controls default host paths:
 
 To check the status of the deployer:
 
-  kubectl get daemonset {{ include "credential-provider-harbor.fullname" . }} -n {{ .Values.namespace }}
-  kubectl logs -l app.kubernetes.io/name={{ include "credential-provider-harbor.name" . }} -n {{ .Values.namespace }}
+  kubectl get daemonset {{ include "credential-provider-harbor.fullname" . }} -n {{ include "credential-provider-harbor.namespace" . }}
+  kubectl logs -l app.kubernetes.io/name={{ include "credential-provider-harbor.name" . }} -n {{ include "credential-provider-harbor.namespace" . }}
 
 {{- if not .Values.kubelet.configure }}
 
@@ -37,7 +37,7 @@ Don't forget to apply the RBAC for audience token requests:
 {{- if .Values.nodeAudienceRbac.create }}
   The chart created {{ include "credential-provider-harbor.nodeAudienceRoleName" . }} for {{ include "credential-provider-harbor.audience" . }}.
 {{- else }}
-  Apply examples/kubernetes/rbac-audience.yaml or enable nodeAudienceRbac.create.
+  Create equivalent RBAC that grants request-serviceaccounts-token-audience on {{ include "credential-provider-harbor.audience" . }} to system:nodes, or enable nodeAudienceRbac.create.
 {{- end }}
 
 To verify image pulling works:

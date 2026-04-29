@@ -67,11 +67,6 @@ kubelet:
   # -- Override k3s config drop-in path for k3s/k3d profiles.
   k3sConfigDropInPath: ""
 
-# RBAC configuration
-rbac:
-  # -- Create ClusterRole and ClusterRoleBinding for the deployer
-  create: true
-
 nodeAudienceRbac:
   # -- Create RBAC that allows kubelets to request service account tokens for registry.audience
   create: true
@@ -114,5 +109,5 @@ nodeSelector: {}
 tolerations:
   - operator: Exists
 
-# -- Namespace to install into
-namespace: kube-system
+# -- Override namespace for namespaced resources. Defaults to the Helm release namespace.
+namespace: ""

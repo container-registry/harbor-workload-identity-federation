@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ include "credential-provider-harbor.fullname" . }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "credential-provider-harbor.namespace" . }}
   labels:
     {{- include "credential-provider-harbor.labels" . | nindent 4 }}
 spec:

@@ -63,12 +63,19 @@ tasks:
           ./cmd/{{.INSTALLER}}/
 
   docker-build:
-    desc: Build multi-arch Docker image (local)
+    desc: Build Docker image for the local platform
+    cmds:
+      - docker build --build-arg VERSION={{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:latest .
+
+  docker-push-version:
+    desc: Build and push multi-arch Docker image without latest tag
     cmds:
       - docker buildx build --platform linux/amd64,linux/arm64
           --build-arg VERSION={{.VERSION}}
           -t {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.VERSION}}
-          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:latest .
+          --push .
 
   docker-push:
     desc: Build and push multi-arch Docker image

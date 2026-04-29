@@ -45,5 +45,10 @@ jobs:
           username: ${{ env.HARBOR_USERNAME }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      - name: Build and push tagged image
+      - name: Build and push release image
+        if: ${{ !github.event.release.prerelease }}
         run: task docker-push
+
+      - name: Build and push prerelease image
+        if: ${{ github.event.release.prerelease }}
+        run: task docker-push-version
