@@ -119,7 +119,7 @@ providers:
 
 Configure kubelet flags:
 
-```
+```text
 --image-credential-provider-bin-dir=/usr/local/bin/credential-providers
 --image-credential-provider-config=/etc/kubernetes/credential-providers/config.yaml
 ```

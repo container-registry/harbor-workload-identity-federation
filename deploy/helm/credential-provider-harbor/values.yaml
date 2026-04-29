@@ -108,6 +108,3 @@ nodeSelector: {}
 # -- Tolerations (defaults to run on all nodes including control plane)
 tolerations:
   - operator: Exists
-
-# -- Override namespace for namespaced resources. Defaults to the Helm release namespace.
-namespace: ""

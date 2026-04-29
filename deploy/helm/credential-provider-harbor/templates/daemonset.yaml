@@ -19,7 +19,6 @@ spec:
       {{- end }}
     spec:
       hostPID: true
-      hostNetwork: true
       serviceAccountName: {{ include "credential-provider-harbor.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:

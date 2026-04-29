@@ -74,6 +74,21 @@ func TestHandleRejectsMissingServiceAccountToken(t *testing.T) {
 	}
 }
 
+func TestHandleAllowsUnknownRequestFields(t *testing.T) {
+	request := `{
+		"apiVersion":"credentialprovider.kubelet.k8s.io/v1",
+		"kind":"CredentialProviderRequest",
+		"image":"harbor.example.com/library/nginx:1.25",
+		"serviceAccountToken":"service-account-token",
+		"futureField":"ignored"
+	}`
+
+	var stdout bytes.Buffer
+	if err := handle("jwt", strings.NewReader(request), &stdout); err != nil {
+		t.Fatalf("handle() returned error: %v", err)
+	}
+}
+
 func TestRegistryHost(t *testing.T) {
 	tests := []struct {
 		name  string

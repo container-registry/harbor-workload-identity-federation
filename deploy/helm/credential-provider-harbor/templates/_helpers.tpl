@@ -63,7 +63,7 @@ ServiceAccount name.
 Namespace for namespaced resources.
 */}}
 {{- define "credential-provider-harbor.namespace" -}}
-{{- default .Release.Namespace .Values.namespace }}
+{{- .Release.Namespace }}
 {{- end }}
 
 {{/*

@@ -93,7 +93,6 @@ func registryHost(image string) string {
 
 func handle(username string, stdin io.Reader, stdout io.Writer) error {
 	decoder := json.NewDecoder(stdin)
-	decoder.DisallowUnknownFields()
 
 	request := &v1.CredentialProviderRequest{}
 	err := decoder.Decode(&request)

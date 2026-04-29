@@ -106,3 +106,64 @@ func TestOptionsDefaultToNodeModificationAndRestart(t *testing.T) {
 		t.Fatal("RestartKubelet = false, want true")
 	}
 }
+
+func TestValidateOptionsRejectsUnsafeBinaryName(t *testing.T) {
+	base := options{
+		HostRoot:        "/host",
+		SourceBinary:    "/usr/local/bin/credential-provider-harbor",
+		BinaryName:      providerName,
+		BinDir:          "/usr/local/bin/credential-providers",
+		ConfigPath:      "/etc/kubernetes/credential-providers/config.yaml",
+		ConfigFormat:    "yaml",
+		MatchImages:     []string{"harbor.example.com"},
+		InstalledMarker: "/var/run/credential-provider-harbor-installed",
+	}
+
+	for _, binaryName := range []string{"", ".", "..", "../evil", "/bin/sh", "nested/name"} {
+		t.Run(binaryName, func(t *testing.T) {
+			opts := base
+			opts.BinaryName = binaryName
+			if err := validateOptions(opts); err == nil {
+				t.Fatal("validateOptions() returned nil error, want unsafe binary name error")
+			}
+		})
+	}
+}
+
+func TestInstallBinaryFixesModeWhenContentsMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	source := filepath.Join(tmpDir, "source")
+	binDir := filepath.Join(tmpDir, "bin")
+	target := filepath.Join(binDir, providerName)
+
+	if err := os.WriteFile(source, []byte("binary"), 0755); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("create bin dir: %v", err)
+	}
+	if err := os.WriteFile(target, []byte("binary"), 0644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	changed, err := installBinary(options{
+		HostRoot:     "/",
+		SourceBinary: source,
+		BinaryName:   providerName,
+		BinDir:       binDir,
+	})
+	if err != nil {
+		t.Fatalf("installBinary() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("installBinary() changed = false, want true")
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat target: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0755 {
+		t.Fatalf("target mode = %v, want 0755", got)
+	}
+}

@@ -261,6 +261,13 @@ func run(opts options) error {
 }
 
 func validateOptions(opts options) error {
+	if opts.BinaryName == "" {
+		return errors.New("BINARY_NAME cannot be empty")
+	}
+	if opts.BinaryName == "." || opts.BinaryName == ".." || filepath.Base(opts.BinaryName) != opts.BinaryName {
+		return fmt.Errorf("BINARY_NAME must be a plain filename: %q", opts.BinaryName)
+	}
+
 	paths := map[string]string{
 		"HOST_ROOT":        opts.HostRoot,
 		"SOURCE_BINARY":    opts.SourceBinary,
@@ -301,6 +308,17 @@ func installBinary(opts options) (bool, error) {
 		return false, err
 	}
 	if equal {
+		info, err := os.Stat(target)
+		if err != nil {
+			return false, fmt.Errorf("stat installed binary: %w", err)
+		}
+		if info.Mode().Perm() != 0755 {
+			if err := os.Chmod(target, 0755); err != nil {
+				return false, fmt.Errorf("chmod installed binary: %w", err)
+			}
+			fmt.Printf("[INFO] Updated binary mode: %s\n", target)
+			return true, nil
+		}
 		fmt.Printf("[INFO] Binary already up to date: %s\n", target)
 		return false, nil
 	}
