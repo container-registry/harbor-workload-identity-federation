@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+env:
+  HARBOR_USERNAME: ${{ vars.HARBOR_USERNAME }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Build all platforms
+        run: task build-all
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bin/credential-provider-harbor-linux-amd64
+            bin/credential-provider-harbor-linux-arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Harbor Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.goharbor.io
+          username: ${{ env.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Build and push release image
+        if: ${{ !github.event.release.prerelease }}
+        run: task docker-push
+
+      - name: Build and push prerelease image
+        if: ${{ github.event.release.prerelease }}
+        run: task docker-push-version

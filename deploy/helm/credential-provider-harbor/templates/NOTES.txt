@@ -1,0 +1,46 @@
+credential-provider-harbor has been deployed.
+
+The deployer DaemonSet will install the credential-provider-harbor binary
+on each node and create the kubelet credential provider configuration.
+
+Registry:  {{ .Values.registry.host }}
+Audience:  {{ include "credential-provider-harbor.audience" . }}
+Profile:   {{ .Values.profile }}
+
+The selected profile controls default host paths:
+  generic/gke/custom: /usr/local/bin/credential-providers and /etc/kubernetes/credential-providers/config.yaml
+  eks/aws:            /etc/eks/image-credential-provider and /etc/eks/image-credential-provider/config.json
+  k3s/k3d:            /var/lib/rancher/credentialprovider/bin and /var/lib/rancher/credentialprovider/config.yaml
+  kind:               /var/lib/kubelet/credential-provider and /var/lib/kubelet/credential-provider-config.yaml
+
+To check the status of the deployer:
+
+  kubectl get daemonset {{ include "credential-provider-harbor.fullname" . }} -n {{ include "credential-provider-harbor.namespace" . }}
+  kubectl logs -l app.kubernetes.io/name={{ include "credential-provider-harbor.name" . }} -n {{ include "credential-provider-harbor.namespace" . }}
+
+{{- if not .Values.kubelet.configure }}
+
+IMPORTANT: Kubelet configuration is disabled. You must configure the kubelet
+on each node to use the installed credential provider paths for your profile:
+
+  --image-credential-provider-bin-dir=<profile bin dir>
+  --image-credential-provider-config=<profile config path>
+
+{{- else if not .Values.kubelet.restart }}
+
+IMPORTANT: Kubelet restart is disabled. Restart or roll nodes before testing image pulls.
+
+{{- end }}
+
+Don't forget to apply the RBAC for audience token requests:
+
+{{- if .Values.nodeAudienceRbac.create }}
+  The chart created {{ include "credential-provider-harbor.nodeAudienceRoleName" . }} for {{ include "credential-provider-harbor.audience" . }}.
+{{- else }}
+  Create equivalent RBAC that grants request-serviceaccounts-token-audience on {{ include "credential-provider-harbor.audience" . }} to system:nodes, or enable nodeAudienceRbac.create.
+{{- end }}
+
+To verify image pulling works:
+
+  kubectl run test --image={{ .Values.registry.host }}/library/nginx:latest --restart=Never
+  kubectl get pod test -w

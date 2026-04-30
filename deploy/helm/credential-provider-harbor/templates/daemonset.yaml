@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "credential-provider-harbor.fullname" . }}
+  namespace: {{ include "credential-provider-harbor.namespace" . }}
+  labels:
+    {{- include "credential-provider-harbor.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "credential-provider-harbor.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "credential-provider-harbor.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      hostPID: true
+      serviceAccountName: {{ include "credential-provider-harbor.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: deployer
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        securityContext:
+          privileged: true
+        env:
+        - name: PROFILE
+          value: {{ .Values.profile | quote }}
+        - name: HOST_ROOT
+          value: {{ .Values.installer.hostRoot | quote }}
+        - name: SOURCE_BINARY
+          value: /usr/local/bin/credential-provider-harbor
+        - name: SLEEP_FOREVER
+          value: {{ .Values.installer.sleep | quote }}
+        - name: BINARY_NAME
+          value: {{ .Values.credentialProvider.binaryName | quote }}
+        - name: REGISTRY_HOST
+          value: {{ required "registry.host is required" .Values.registry.host | quote }}
+        - name: REGISTRY_AUDIENCE
+          value: {{ include "credential-provider-harbor.audience" . | quote }}
+        - name: REGISTRY_USERNAME
+          value: {{ .Values.registry.username | quote }}
+        - name: MATCH_IMAGES
+          value: {{ default .Values.registry.host (join "," .Values.registry.matchImages) | quote }}
+        - name: CACHE_DURATION
+          value: {{ .Values.registry.cacheDuration | quote }}
+        - name: BIN_DIR
+          value: {{ .Values.credentialProvider.binDir | quote }}
+        - name: CONFIG_PATH
+          value: {{ .Values.credentialProvider.configPath | quote }}
+        - name: CONFIG_FORMAT
+          value: {{ .Values.credentialProvider.configFormat | quote }}
+        - name: CONFIGURE_KUBELET
+          value: {{ .Values.kubelet.configure | quote }}
+        - name: RESTART_KUBELET
+          value: {{ .Values.kubelet.restart | quote }}
+        - name: KUBELET_SERVICE
+          value: {{ .Values.kubelet.serviceName | quote }}
+        - name: SYSTEMD_DROP_IN_PATH
+          value: {{ .Values.kubelet.systemdDropInPath | quote }}
+        - name: K3S_CONFIG_DROP_IN_PATH
+          value: {{ .Values.kubelet.k3sConfigDropInPath | quote }}
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        command:
+        - /usr/local/bin/install-credential-provider.sh
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - name: host-root
+          mountPath: {{ .Values.installer.hostRoot | quote }}
+        - name: host-run
+          mountPath: {{ printf "%s/var/run" (.Values.installer.hostRoot | trimSuffix "/") | quote }}
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory
+      - name: host-run
+        hostPath:
+          path: /var/run
+          type: DirectoryOrCreate
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

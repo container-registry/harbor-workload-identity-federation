@@ -1,0 +1,106 @@
+version: '3'
+
+vars:
+  APP: credential-provider-harbor
+  INSTALLER: credential-provider-harbor-installer
+  MODULE: github.com/container-registry/harbor-workload-identity-federation
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  REGISTRY: registry.goharbor.io/harbor-workload-identity-federation
+  IMAGE_NAME: credential-provider-harbor-deployer
+
+tasks:
+  default:
+    desc: Build the credential-provider-harbor binaries
+    cmds:
+      - task: build
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -race -v ./...
+
+  build:
+    desc: Build binaries for current platform
+    sources:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+    generates:
+      - './bin/{{.APP}}'
+      - './bin/{{.INSTALLER}}'
+    cmds:
+      - go build -ldflags="-s -w -X main.version={{.VERSION}}"
+          -o bin/{{.APP}} ./cmd/{{.APP}}/
+      - go build -ldflags="-s -w"
+          -o bin/{{.INSTALLER}} ./cmd/{{.INSTALLER}}/
+
+  build-all:
+    desc: Cross-compile for linux/amd64 and linux/arm64
+    cmds:
+      - for:
+          matrix:
+            GOOS: [linux]
+            GOARCH: [amd64, arm64]
+        cmd: >-
+          CGO_ENABLED=0 GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}}
+          go build -ldflags="-s -w -X main.version={{.VERSION}}"
+          -o bin/{{.APP}}-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
+          ./cmd/{{.APP}}/
+      - for:
+          matrix:
+            GOOS: [linux]
+            GOARCH: [amd64, arm64]
+        cmd: >-
+          CGO_ENABLED=0 GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}}
+          go build -ldflags="-s -w"
+          -o bin/{{.INSTALLER}}-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
+          ./cmd/{{.INSTALLER}}/
+
+  docker-build:
+    desc: Build Docker image for the local platform
+    cmds:
+      - docker build --build-arg VERSION={{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:latest .
+
+  docker-push-version:
+    desc: Build and push multi-arch Docker image without latest tag
+    cmds:
+      - docker buildx build --platform linux/amd64,linux/arm64
+          --build-arg VERSION={{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.VERSION}}
+          --push .
+
+  docker-push:
+    desc: Build and push multi-arch Docker image
+    cmds:
+      - docker buildx build --platform linux/amd64,linux/arm64
+          --build-arg VERSION={{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.VERSION}}
+          -t {{.REGISTRY}}/{{.IMAGE_NAME}}:latest
+          --push .
+
+  helm-lint:
+    desc: Lint the Helm chart
+    cmds:
+      - helm lint deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com
+
+  helm-template:
+    desc: Render the Helm chart for supported profiles
+    cmds:
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=generic >/dev/null
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=eks >/dev/null
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=k3s >/dev/null
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=kind >/dev/null
+      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=gke >/dev/null
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin/

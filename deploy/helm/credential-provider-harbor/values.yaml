@@ -1,0 +1,110 @@
+# credential-provider-harbor Helm Chart Values
+
+# -- Deployer image containing the credential-provider-harbor binary
+image:
+  # -- Container registry and repository
+  repository: registry.goharbor.io/harbor-workload-identity-federation/credential-provider-harbor-deployer
+  # -- Image tag (defaults to Chart.appVersion)
+  tag: ""
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets
+imagePullSecrets: []
+
+# -- Override chart name
+nameOverride: ""
+# -- Override full release name
+fullnameOverride: ""
+
+# -- Installation profile. Supported: generic, eks, aws, k3s, k3d, kind, gke, custom.
+profile: generic
+
+# Harbor registry configuration
+registry:
+  # -- Harbor registry hostname (REQUIRED). Used for matchImages in credential provider config.
+  host: ""
+  # -- Token audience (defaults to registry.host if empty)
+  audience: ""
+  # -- Image match patterns. Defaults to registry.host when empty.
+  matchImages: []
+  # -- Cache duration for credentials
+  cacheDuration: "1h"
+  # -- Username for registry credentials
+  username: "jwt"
+
+# Credential provider paths on the host node
+credentialProvider:
+  # -- Credential provider executable name on the host
+  binaryName: credential-provider-harbor
+  # -- Directory on the host to place the credential-provider-harbor binary
+  # Defaults by profile when empty.
+  binDir: ""
+  # -- Full path on the host to the credential provider config file.
+  # Defaults by profile when empty.
+  configPath: ""
+  # -- Config format: yaml or json. Defaults by profile when empty.
+  configFormat: ""
+
+# Installer configuration
+installer:
+  # -- Host root mount path inside the installer container
+  hostRoot: /host
+  # -- Keep the installer pod running after node installation completes
+  sleep: true
+
+# Kubelet configuration
+kubelet:
+  # -- Configure kubelet to use the credential provider path where supported by the selected profile.
+  configure: true
+  # -- Whether to restart kubelet after installing the credential provider.
+  # Enabled by default so Helm install makes the node ready immediately.
+  restart: true
+  # -- Override kubelet service name. Defaults by profile when empty.
+  serviceName: ""
+  # -- Override systemd drop-in path for generic/kind/gke/custom profiles.
+  systemdDropInPath: ""
+  # -- Override k3s config drop-in path for k3s/k3d profiles.
+  k3sConfigDropInPath: ""
+
+nodeAudienceRbac:
+  # -- Create RBAC that allows kubelets to request service account tokens for registry.audience
+  create: true
+  # -- Override the node audience ClusterRole/ClusterRoleBinding name
+  name: ""
+  # -- Kubernetes groups allowed to request service account tokens for registry.audience
+  groups:
+    - system:nodes
+
+# ServiceAccount configuration
+serviceAccount:
+  # -- Create a ServiceAccount for the deployer
+  create: true
+  # -- ServiceAccount annotations
+  annotations: {}
+  # -- ServiceAccount name (auto-generated if empty)
+  name: ""
+
+# -- Pod annotations
+podAnnotations: {}
+
+# -- Extra environment variables for the installer container
+extraEnv: []
+# - name: PRESERVE_ECR_PROVIDER
+#   value: "false"
+
+# -- Container resources
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 50m
+  #   memory: 64Mi
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Tolerations (defaults to run on all nodes including control plane)
+tolerations:
+  - operator: Exists

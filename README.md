@@ -23,6 +23,131 @@ Repository with examples demonstrating how to use Harbor/8gears Container Regist
 
 ---
 
+## credential-provider-harbor
+
+`credential-provider-harbor` is a Kubernetes kubelet credential provider plugin (KEP-4412) that uses Service Account tokens directly as Harbor registry passwords via Workload Identity Federation (FedIDP).
+
+The kubelet calls this binary via stdin/stdout protocol: it receives a `CredentialProviderRequest` containing a service account token and returns a `CredentialProviderResponse` with Basic Auth credentials (`jwt:<SA-token>`).
+
+### Installation
+
+The recommended install path is the Helm chart. It runs a privileged DaemonSet on every node, copies the credential provider binary onto the host, writes or merges the kubelet credential provider config, creates the node audience RBAC, configures kubelet where the selected profile supports it, and restarts kubelet by default.
+
+```bash
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --create-namespace \
+  --set registry.host=<your-registry-domain>
+```
+
+Select a platform profile when the default generic kubelet paths are not right for your cluster:
+
+| Profile | Use case | Host config path |
+|---------|----------|------------------|
+| `generic` | kubeadm/systemd nodes | `/etc/kubernetes/credential-providers/config.yaml` |
+| `eks` or `aws` | Amazon EKS AL2023 nodes | `/etc/eks/image-credential-provider/config.json` |
+| `k3s` or `k3d` | k3s/k3d nodes | `/var/lib/rancher/credentialprovider/config.yaml` |
+| `kind` | KIND node containers | `/var/lib/kubelet/credential-provider-config.yaml` |
+| `gke` | GKE Standard best-effort | generic kubelet paths |
+| `custom` | Explicit paths via values | user-provided |
+
+Examples:
+
+```bash
+# EKS AL2023. Preserves the existing ECR credential provider entry.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --set profile=eks \
+  --set registry.host=<your-registry-domain>
+
+# k3s/k3d.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --set profile=k3s \
+  --set registry.host=<your-registry-domain>
+
+# Install files but do not restart kubelet.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --set registry.host=<your-registry-domain> \
+  --set kubelet.restart=false
+```
+
+GKE Autopilot is not supported because it does not allow the privileged host access required to install kubelet credential provider binaries.
+
+#### Direct Binary
+
+You can also install the binary manually on each node.
+
+Download the binary from [GitHub Releases](https://github.com/container-registry/harbor-workload-identity-federation/releases) and place it on each node.
+
+```bash
+# Download the binary (choose your architecture)
+curl -Lo credential-provider-harbor \
+  https://github.com/container-registry/harbor-workload-identity-federation/releases/latest/download/credential-provider-harbor-linux-amd64
+
+chmod +x credential-provider-harbor
+
+# Place it in the credential provider directory
+sudo mkdir -p /usr/local/bin/credential-providers
+sudo mv credential-provider-harbor /usr/local/bin/credential-providers/
+```
+
+Create the credential provider config:
+
+```yaml
+# /etc/kubernetes/credential-providers/config.yaml
+kind: CredentialProviderConfig
+apiVersion: kubelet.config.k8s.io/v1
+providers:
+- name: credential-provider-harbor
+  apiVersion: credentialprovider.kubelet.k8s.io/v1
+  tokenAttributes:
+    requireServiceAccount: true
+    serviceAccountTokenAudience: "<your-registry-domain>"
+    cacheType: Token
+  matchImages:
+  - "<your-registry-domain>"
+  defaultCacheDuration: "1h"
+  args:
+  - "--username=jwt"
+```
+
+Configure kubelet flags:
+
+```text
+--image-credential-provider-bin-dir=/usr/local/bin/credential-providers
+--image-credential-provider-config=/etc/kubernetes/credential-providers/config.yaml
+```
+
+See [`deploy/helm/credential-provider-harbor/values.yaml`](deploy/helm/credential-provider-harbor/values.yaml) for all configurable values.
+
+### Building from Source
+
+```bash
+# Install task runner: https://taskfile.dev/installation/
+# Build for current platform
+task build
+
+# Cross-compile for linux/amd64 and linux/arm64
+task build-all
+
+# Build Docker image
+task docker-build
+
+# Run tests
+task test
+
+# Run linter
+task lint
+```
+
+---
+
 ## GitHub Actions Example
 
 This example demonstrates how to authenticate to Harbor from a GitHub Actions workflow using OIDC tokens.
@@ -83,6 +208,8 @@ jobs:
           echo $TOKEN | docker login -u not-relevant --password-stdin <your-registry-domain>
           docker pull <your-registry-domain>/library/hello-world:latest
 ```
+
+See full example workflow: [`examples/github-actions/example_1.yml`](examples/github-actions/example_1.yml)
 
 ### Key Points
 
@@ -209,7 +336,7 @@ build-and-push:
     - docker:dind
   id_tokens:
     ID_TOKEN:
-      aud: <your-registry-domain>  # 👈 audience claim matching your registry
+      aud: <your-registry-domain>  # audience claim matching your registry
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
@@ -223,6 +350,8 @@ build-and-push:
   rules:
     - when: manual
 ```
+
+See full example pipeline: [`examples/gitlab-ci/.gitlab-ci.yml`](examples/gitlab-ci/.gitlab-ci.yml)
 
 ### Key Points
 
@@ -329,23 +458,23 @@ In Kubernetes 1.34+, the kubelet can automatically request Service Account token
 │                              k3d Cluster                                     │
 │  ┌─────────────────┐    ┌──────────────────┐    ┌───────────────────────┐   │
 │  │   Pod (httpd)   │    │     Kubelet      │    │  Credential Provider  │   │
-│  │                 │───▶│                  │───▶│  Plugin               │   │
+│  │                 │───>│                  │───>│  Plugin               │   │
 │  │ Uses SA: default│    │ Requests SA token│    │ Returns Basic Auth    │   │
 │  └─────────────────┘    │ with audience    │    │ (jwt:<SA token>)      │   │
 │                         └──────────────────┘    └───────────────────────┘   │
 │                                  │                                           │
-│                                  ▼                                           │
+│                                  v                                           │
 │                         ┌──────────────────┐                                │
 │                         │    containerd    │                                │
 │                         │ (pulls image)    │                                │
 │                         └────────┬─────────┘                                │
 └──────────────────────────────────┼──────────────────────────────────────────┘
                                    │ Basic Auth: jwt:<k8s-sa-token>
-                                   ▼
+                                   v
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         Harbor Registry                                      │
 │  ┌──────────────────┐    ┌─────────────────────────────────────────────┐   │
-│  │ robotjwt         │───▶│ Validates K8s JWT signature via JWKS        │   │
+│  │ robotjwt         │───>│ Validates K8s JWT signature via JWKS        │   │
 │  │ middleware       │    │ Maps claims to robot account permissions    │   │
 │  └──────────────────┘    └─────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -356,20 +485,20 @@ In Kubernetes 1.34+, the kubelet can automatically request Service Account token
 - Docker installed
 - k3d installed (`brew install k3d` or see [k3d.io](https://k3d.io))
 - kubectl installed
-- The `credential-provider-plugin` binary for your architecture (linux-amd64 or linux-arm64)
+- The `credential-provider-harbor` binary for your architecture (linux-amd64 or linux-arm64)
 
 ### Quick Start
 
 ```bash
 # 1. Create the cluster
-k3d cluster create --config k3d-config.yaml
+k3d cluster create --config examples/kubernetes/k3d-config.yaml
 
 # 2. Get kubeconfig
 k3d kubeconfig get credential-provider-test > kubeconfig.yaml
 export KUBECONFIG=kubeconfig.yaml
 
 # 3. Apply RBAC for audience token requests
-kubectl apply -f rbac-audience.yaml
+kubectl apply -f examples/kubernetes/rbac-audience.yaml
 
 # 4. Get JWKS for Harbor configuration
 kubectl get --raw /openid/v1/jwks | jq .
@@ -378,7 +507,7 @@ kubectl get --raw /openid/v1/jwks | jq .
 # 6. Create robot account with claim rules
 
 # 7. Deploy test pod
-kubectl apply -f pod-example.yaml
+kubectl apply -f examples/kubernetes/pod-example.yaml
 kubectl get pod httpd -w
 ```
 
@@ -396,7 +525,7 @@ agents: 0
 image: rancher/k3s:v1.34.2-k3s1
 volumes:
   # Mount the credential provider binary to k3s default path
-  - volume: /path/to/linux-arm64/credential-provider-plugin:/var/lib/rancher/credentialprovider/bin/credential-provider-echo-token-silly
+  - volume: /path/to/credential-provider-harbor:/var/lib/rancher/credentialprovider/bin/credential-provider-harbor
     nodeFilters:
       - all
   # Mount the credential provider config to k3s default path
@@ -415,13 +544,15 @@ options:
           - server:*
 ```
 
+See example files in [`examples/kubernetes/`](examples/kubernetes/).
+
 #### k8s_credential_provider_config.yaml
 
 ```yaml
 kind: CredentialProviderConfig
 apiVersion: kubelet.config.k8s.io/v1
 providers:
-  - name: credential-provider-echo-token-silly
+  - name: credential-provider-harbor
     apiVersion: credentialprovider.kubelet.k8s.io/v1
     tokenAttributes:
       requireServiceAccount: true

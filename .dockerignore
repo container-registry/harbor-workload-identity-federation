@@ -1,0 +1,12 @@
+bin/
+test-fedidp/
+.git/
+.github/
+deploy/
+examples/
+images/
+*.md
+!cmd/credential-provider-harbor/README.md
+LICENSE
+.gitignore
+.dockerignore

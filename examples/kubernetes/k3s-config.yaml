@@ -1,0 +1,2 @@
+image-credential-provider-config: "/var/lib/rancher/credentialprovider/config.yaml"
+image-credential-provider-bin-dir: "/var/lib/rancher/credentialprovider/bin"
