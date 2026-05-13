@@ -23,26 +23,27 @@ const (
 )
 
 type options struct {
-	Profile             string
-	HostRoot            string
-	SourceBinary        string
-	BinaryName          string
-	BinDir              string
-	ConfigPath          string
-	ConfigFormat        string
-	RegistryHost        string
-	RegistryAudience    string
-	RegistryUsername    string
-	MatchImages         []string
-	CacheDuration       string
-	ConfigureKubelet    bool
-	RestartKubelet      bool
-	KubeletService      string
-	SystemdDropInPath   string
-	K3sConfigDropInPath string
-	PreserveECRProvider bool
-	SleepForever        bool
-	InstalledMarker     string
+	Profile               string
+	HostRoot              string
+	SourceBinary          string
+	BinaryName            string
+	BinDir                string
+	ConfigPath            string
+	ConfigFormat          string
+	RegistryHost          string
+	RegistryAudience      string
+	RegistryUsername      string
+	MatchImages           []string
+	CacheDuration         string
+	ConfigureKubelet      bool
+	RestartKubelet        bool
+	ForceKubeletExecStart bool
+	KubeletService        string
+	SystemdDropInPath     string
+	K3sConfigDropInPath   string
+	PreserveECRProvider   bool
+	SleepForever          bool
+	InstalledMarker       string
 }
 
 type profileDefaults struct {
@@ -151,26 +152,27 @@ func optionsFromEnv() (options, error) {
 	}
 
 	return options{
-		Profile:             profile,
-		HostRoot:            env("HOST_ROOT", "/host"),
-		SourceBinary:        env("SOURCE_BINARY", "/usr/local/bin/credential-provider-harbor"),
-		BinaryName:          env("BINARY_NAME", providerName),
-		BinDir:              binDir,
-		ConfigPath:          configPath,
-		ConfigFormat:        configFormat,
-		RegistryHost:        registryHost,
-		RegistryAudience:    env("REGISTRY_AUDIENCE", registryHost),
-		RegistryUsername:    env("REGISTRY_USERNAME", "jwt"),
-		MatchImages:         listValue(env("MATCH_IMAGES", registryHost)),
-		CacheDuration:       env("CACHE_DURATION", "1h"),
-		ConfigureKubelet:    boolEnv("CONFIGURE_KUBELET", true),
-		RestartKubelet:      boolEnv("RESTART_KUBELET", true),
-		KubeletService:      env("KUBELET_SERVICE", defaults.KubeletService),
-		SystemdDropInPath:   env("SYSTEMD_DROP_IN_PATH", defaults.SystemdDropInPath),
-		K3sConfigDropInPath: env("K3S_CONFIG_DROP_IN_PATH", defaults.K3sConfigDropInPath),
-		PreserveECRProvider: preserveECR,
-		SleepForever:        boolEnv("SLEEP_FOREVER", false),
-		InstalledMarker:     env("INSTALLED_MARKER", "/var/run/credential-provider-harbor-installed"),
+		Profile:               profile,
+		HostRoot:              env("HOST_ROOT", "/host"),
+		SourceBinary:          env("SOURCE_BINARY", "/usr/local/bin/credential-provider-harbor"),
+		BinaryName:            env("BINARY_NAME", providerName),
+		BinDir:                binDir,
+		ConfigPath:            configPath,
+		ConfigFormat:          configFormat,
+		RegistryHost:          registryHost,
+		RegistryAudience:      env("REGISTRY_AUDIENCE", registryHost),
+		RegistryUsername:      env("REGISTRY_USERNAME", "jwt"),
+		MatchImages:           listValue(env("MATCH_IMAGES", registryHost)),
+		CacheDuration:         env("CACHE_DURATION", "1h"),
+		ConfigureKubelet:      boolEnv("CONFIGURE_KUBELET", true),
+		RestartKubelet:        boolEnv("RESTART_KUBELET", true),
+		ForceKubeletExecStart: boolEnv("FORCE_KUBELET_EXECSTART", false),
+		KubeletService:        env("KUBELET_SERVICE", defaults.KubeletService),
+		SystemdDropInPath:     env("SYSTEMD_DROP_IN_PATH", defaults.SystemdDropInPath),
+		K3sConfigDropInPath:   env("K3S_CONFIG_DROP_IN_PATH", defaults.K3sConfigDropInPath),
+		PreserveECRProvider:   preserveECR,
+		SleepForever:          boolEnv("SLEEP_FOREVER", false),
+		InstalledMarker:       env("INSTALLED_MARKER", "/var/run/credential-provider-harbor-installed"),
 	}, nil
 }
 
@@ -375,6 +377,11 @@ func configureKubelet(opts options) (bool, error) {
 		return false, nil
 	case "k3s", "k3d":
 		return configureK3s(opts)
+	case "kind":
+		if !opts.ForceKubeletExecStart {
+			return configureSystemdKubelet(opts)
+		}
+		return configureKindSystemdKubelet(opts)
 	default:
 		return configureSystemdKubelet(opts)
 	}
@@ -406,6 +413,38 @@ Environment="KUBELET_EXTRA_ARGS=--image-credential-provider-bin-dir=%s --image-c
 		fmt.Printf("[INFO] Wrote kubelet systemd drop-in: %s\n", hostDropInPath)
 	} else {
 		fmt.Printf("[INFO] Kubelet systemd drop-in already up to date: %s\n", hostDropInPath)
+	}
+	return changed, nil
+}
+
+func configureKindSystemdKubelet(opts options) (bool, error) {
+	service := opts.KubeletService
+	if service == "" {
+		service = "kubelet"
+	}
+	dropInPath := opts.SystemdDropInPath
+	if dropInPath == "" {
+		dropInPath = filepath.Join("/etc/systemd/system", service+".service.d", "99-credential-provider-harbor.conf")
+	}
+
+	content := fmt.Sprintf(`[Service]
+Environment="KUBELET_EXTRA_ARGS=--image-credential-provider-bin-dir=%s --image-credential-provider-config=%s"
+ExecStart=
+ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS --image-credential-provider-bin-dir=%s --image-credential-provider-config=%s
+`, opts.BinDir, opts.ConfigPath, opts.BinDir, opts.ConfigPath)
+
+	hostDropInPath := hostPath(opts, dropInPath)
+	if err := os.MkdirAll(filepath.Dir(hostDropInPath), 0755); err != nil {
+		return false, fmt.Errorf("create kubelet systemd drop-in directory: %w", err)
+	}
+	changed, err := writeFileIfChanged(hostDropInPath, []byte(content), 0644, true)
+	if err != nil {
+		return false, fmt.Errorf("write kind kubelet systemd drop-in: %w", err)
+	}
+	if changed {
+		fmt.Printf("[INFO] Wrote kind kubelet systemd drop-in: %s\n", hostDropInPath)
+	} else {
+		fmt.Printf("[INFO] Kind kubelet systemd drop-in already up to date: %s\n", hostDropInPath)
 	}
 	return changed, nil
 }

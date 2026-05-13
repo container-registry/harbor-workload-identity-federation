@@ -65,6 +65,8 @@ spec:
           value: {{ .Values.kubelet.serviceName | quote }}
         - name: SYSTEMD_DROP_IN_PATH
           value: {{ .Values.kubelet.systemdDropInPath | quote }}
+        - name: FORCE_KUBELET_EXECSTART
+          value: {{ .Values.kubelet.forceExecStartOverride | quote }}
         - name: K3S_CONFIG_DROP_IN_PATH
           value: {{ .Values.kubelet.k3sConfigDropInPath | quote }}
         {{- with .Values.extraEnv }}
