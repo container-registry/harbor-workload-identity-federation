@@ -33,12 +33,42 @@ The kubelet calls this binary via stdin/stdout protocol: it receives a `Credenti
 
 The recommended install path is the Helm chart. It runs a privileged DaemonSet on every node, copies the credential provider binary onto the host, writes or merges the kubelet credential provider config, creates the node audience RBAC, configures kubelet where the selected profile supports it, and restarts kubelet by default.
 
+Set these values first:
+
+```bash
+export REGISTRY_ADDRESS=8gears.container-registry.com
+export PROJECT_NAME=8gcr
+export INSTALLER_IMAGE="${REGISTRY_ADDRESS}/${PROJECT_NAME}/credential-provider-harbor-deployer"
+
+# Harbor registry that workloads pull from.
+export HARBOR_REGISTRY=harbor.example.com
+
+# Audience Harbor expects in service account tokens. Use the exact value configured in Harbor FedIDP.
+export HARBOR_AUDIENCE=https://harbor.example.com
+```
+
+Install from a local checkout:
+
 ```bash
 helm upgrade --install credential-provider-harbor \
   deploy/helm/credential-provider-harbor/ \
   --namespace kube-system \
   --create-namespace \
-  --set registry.host=<your-registry-domain>
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
+```
+
+Install a released OCI chart:
+
+```bash
+helm upgrade --install credential-provider-harbor \
+  "oci://${REGISTRY_ADDRESS}/${PROJECT_NAME}/credential-provider-harbor" \
+  --namespace kube-system \
+  --create-namespace \
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
 ```
 
 Select a platform profile when the default generic kubelet paths are not right for your cluster:
@@ -55,25 +85,87 @@ Select a platform profile when the default generic kubelet paths are not right f
 Examples:
 
 ```bash
+# Generic kubeadm/systemd nodes.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --create-namespace \
+  --set profile=generic \
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
+
 # EKS AL2023. Preserves the existing ECR credential provider entry.
 helm upgrade --install credential-provider-harbor \
   deploy/helm/credential-provider-harbor/ \
   --namespace kube-system \
+  --create-namespace \
   --set profile=eks \
-  --set registry.host=<your-registry-domain>
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
 
 # k3s/k3d.
 helm upgrade --install credential-provider-harbor \
   deploy/helm/credential-provider-harbor/ \
   --namespace kube-system \
+  --create-namespace \
   --set profile=k3s \
-  --set registry.host=<your-registry-domain>
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
+
+# kind.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --create-namespace \
+  --set profile=kind \
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
+
+# kind fallback. Enable only if the live kubelet command line is missing the provider flags.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --create-namespace \
+  --set profile=kind \
+  --set kubelet.forceExecStartOverride=true \
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
+
+# GKE Standard best effort. GKE Autopilot is unsupported.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --create-namespace \
+  --set profile=gke \
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
+
+# Custom host paths.
+helm upgrade --install credential-provider-harbor \
+  deploy/helm/credential-provider-harbor/ \
+  --namespace kube-system \
+  --create-namespace \
+  --set profile=custom \
+  --set credentialProvider.binDir=/opt/kubelet/credential-providers \
+  --set credentialProvider.configPath=/etc/kubernetes/credential-providers/config.yaml \
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}"
 
 # Install files but do not restart kubelet.
 helm upgrade --install credential-provider-harbor \
   deploy/helm/credential-provider-harbor/ \
   --namespace kube-system \
-  --set registry.host=<your-registry-domain> \
+  --create-namespace \
+  --set image.repository="${INSTALLER_IMAGE}" \
+  --set registry.host="${HARBOR_REGISTRY}" \
+  --set registry.audience="${HARBOR_AUDIENCE}" \
   --set kubelet.restart=false
 ```
 
@@ -139,12 +231,42 @@ task build-all
 # Build Docker image
 task docker-build
 
+# Push Docker image to REGISTRY_ADDRESS/PROJECT_NAME
+REGISTRY_ADDRESS=8gears.container-registry.com PROJECT_NAME=8gcr task docker-push
+
+# Package and push the Helm chart to OCI
+REGISTRY_ADDRESS=8gears.container-registry.com PROJECT_NAME=8gcr task helm-push
+
 # Run tests
 task test
 
 # Run linter
 task lint
 ```
+
+### Release Configuration
+
+GitHub Actions publishes images and Helm charts to `REGISTRY_ADDRESS/PROJECT_NAME`. For example, with `REGISTRY_ADDRESS=8gears.container-registry.com` and `PROJECT_NAME=8gcr`, the deployer image is pushed to:
+
+```text
+8gears.container-registry.com/8gcr/credential-provider-harbor-deployer
+```
+
+Set these repository variables:
+
+```text
+REGISTRY_ADDRESS=8gears.container-registry.com
+PROJECT_NAME=8gcr
+REGISTRY_USERNAME=<robot-or-user-with-push-access>
+```
+
+Set this repository secret:
+
+```text
+REGISTRY_PASSWORD=<password-or-token>
+```
+
+The release workflow uploads Linux credential-provider and installer binaries to the GitHub release, pushes the multi-arch deployer image, and pushes the Helm chart as OCI to `oci://${REGISTRY_ADDRESS}/${PROJECT_NAME}/credential-provider-harbor`.
 
 ---
 

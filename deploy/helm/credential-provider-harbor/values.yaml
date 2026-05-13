@@ -3,7 +3,7 @@
 # -- Deployer image containing the credential-provider-harbor binary
 image:
   # -- Container registry and repository
-  repository: registry.goharbor.io/harbor-workload-identity-federation/credential-provider-harbor-deployer
+  repository: 8gears.container-registry.com/8gcr/credential-provider-harbor-deployer
   # -- Image tag (defaults to Chart.appVersion)
   tag: ""
   # -- Image pull policy

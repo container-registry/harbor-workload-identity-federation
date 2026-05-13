@@ -11,6 +11,8 @@ helm upgrade --install credential-provider-harbor . \
   --set registry.host=harbor.example.com
 ```
 
+The published deployer image defaults to `8gears.container-registry.com/8gcr/credential-provider-harbor-deployer`. If you publish the image to a different registry project, set `image.repository=<registry>/<project>/credential-provider-harbor-deployer`.
+
 By default the chart configures kubelet and restarts it after installing the binary and config. Disable that behavior only when you want to roll nodes yourself:
 
 ```bash
