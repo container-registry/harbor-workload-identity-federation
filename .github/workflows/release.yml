@@ -5,7 +5,9 @@ on:
     types: [published]
 
 env:
-  HARBOR_USERNAME: ${{ vars.HARBOR_USERNAME }}
+  REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS || '8gears.container-registry.com' }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME || '8gcr' }}
+  REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
 
 jobs:
   release:
@@ -25,6 +27,9 @@ jobs:
         with:
           version: 3.x
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
       - name: Build all platforms
         run: task build-all
 
@@ -34,6 +39,8 @@ jobs:
           files: |
             bin/credential-provider-harbor-linux-amd64
             bin/credential-provider-harbor-linux-arm64
+            bin/credential-provider-harbor-installer-linux-amd64
+            bin/credential-provider-harbor-installer-linux-arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -41,9 +48,15 @@ jobs:
       - name: Login to Harbor Registry
         uses: docker/login-action@v3
         with:
-          registry: registry.goharbor.io
-          username: ${{ env.HARBOR_USERNAME }}
-          password: ${{ secrets.HARBOR_PASSWORD }}
+          registry: ${{ env.REGISTRY_ADDRESS }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Login to Harbor Helm registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          printf '%s' "$REGISTRY_PASSWORD" | helm registry login "$REGISTRY_ADDRESS" --username "$REGISTRY_USERNAME" --password-stdin
 
       - name: Build and push release image
         if: ${{ !github.event.release.prerelease }}
@@ -52,3 +65,6 @@ jobs:
       - name: Build and push prerelease image
         if: ${{ github.event.release.prerelease }}
         run: task docker-push-version
+
+      - name: Package and push Helm chart
+        run: task helm-push

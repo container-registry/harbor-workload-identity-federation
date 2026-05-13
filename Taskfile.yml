@@ -6,8 +6,19 @@ vars:
   MODULE: github.com/container-registry/harbor-workload-identity-federation
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
-  REGISTRY: registry.goharbor.io/harbor-workload-identity-federation
+  CHART_VERSION:
+    sh: |
+      tag=$(git describe --tags --exact-match 2>/dev/null || true)
+      if [ -n "$tag" ]; then
+        printf '%s' "${tag#v}"
+      else
+        awk '/^version:/ {print $2}' deploy/helm/credential-provider-harbor/Chart.yaml
+      fi
+  REGISTRY_ADDRESS: '{{default "8gears.container-registry.com" .REGISTRY_ADDRESS}}'
+  PROJECT_NAME: '{{default "8gcr" .PROJECT_NAME}}'
+  REGISTRY: '{{.REGISTRY_ADDRESS}}/{{.PROJECT_NAME}}'
   IMAGE_NAME: credential-provider-harbor-deployer
+  CHART: credential-provider-harbor
 
 tasks:
   default:
@@ -85,6 +96,21 @@ tasks:
           -t {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.VERSION}}
           -t {{.REGISTRY}}/{{.IMAGE_NAME}}:latest
           --push .
+
+  helm-package:
+    desc: Package the Helm chart
+    cmds:
+      - mkdir -p dist
+      - helm package deploy/helm/{{.CHART}}/
+          --destination dist
+          --version {{.CHART_VERSION}}
+          --app-version {{.VERSION}}
+
+  helm-push:
+    desc: Package and push the Helm chart as OCI
+    deps: [helm-package]
+    cmds:
+      - helm push dist/{{.CHART}}-{{.CHART_VERSION}}.tgz oci://{{.REGISTRY}}
 
   helm-lint:
     desc: Lint the Helm chart
