@@ -30,6 +30,8 @@ By default the chart configures kubelet and restarts it after installing the bin
 
 GKE Autopilot is unsupported because it blocks privileged host access.
 
+For `profile=kind`, verify the live kubelet command line inside the kind node includes `--image-credential-provider-bin-dir` and `--image-credential-provider-config`. If image pulls fail with `no basic auth credentials` and those flags are missing, retry with `--set kubelet.forceExecStartOverride=true`. This resets kind kubelet `ExecStart` and appends the provider flags directly; leave it disabled unless kind does not propagate `KUBELET_EXTRA_ARGS`.
+
 ## Required Harbor Setup
 
 Configure Harbor FedIDP with the cluster issuer and JWKS, then create a federated robot account matching the service account token claims, typically `aud`, `iss`, and `sub`.

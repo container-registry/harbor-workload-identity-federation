@@ -64,6 +64,9 @@ kubelet:
   serviceName: ""
   # -- Override systemd drop-in path for generic/kind/gke/custom profiles.
   systemdDropInPath: ""
+  # -- For kind only: force a kubelet ExecStart override instead of only setting KUBELET_EXTRA_ARGS.
+  # Enable this if the live kubelet command line does not include the credential-provider flags after install.
+  forceExecStartOverride: false
   # -- Override k3s config drop-in path for k3s/k3d profiles.
   k3sConfigDropInPath: ""
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -37,6 +38,80 @@ func TestMergeProviderReplacesExistingProviderAndPreservesOthers(t *testing.T) {
 	}
 	if merged.Providers[1].Name != "ecr-credential-provider" {
 		t.Fatalf("Providers[1].Name = %q, want ecr-credential-provider", merged.Providers[1].Name)
+	}
+}
+
+func TestConfigureKindSystemdKubeletWritesExecStartOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	opts := options{
+		HostRoot:       tmpDir,
+		BinDir:         "/var/lib/kubelet/credential-provider",
+		ConfigPath:     "/var/lib/kubelet/credential-provider-config.yaml",
+		KubeletService: "kubelet",
+	}
+
+	changed, err := configureKindSystemdKubelet(opts)
+	if err != nil {
+		t.Fatalf("configureKindSystemdKubelet() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("configureKindSystemdKubelet() changed = false, want true")
+	}
+	changed, err = configureKindSystemdKubelet(opts)
+	if err != nil {
+		t.Fatalf("second configureKindSystemdKubelet() error: %v", err)
+	}
+	if changed {
+		t.Fatal("second configureKindSystemdKubelet() changed = true, want false")
+	}
+
+	dropIn := filepath.Join(tmpDir, "etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf")
+	data, err := os.ReadFile(dropIn)
+	if err != nil {
+		t.Fatalf("read drop-in: %v", err)
+	}
+	for _, want := range [][]byte{
+		[]byte("ExecStart="),
+		[]byte("ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS"),
+		[]byte("--image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider"),
+		[]byte("--image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml"),
+	} {
+		if !bytes.Contains(data, want) {
+			t.Fatalf("drop-in missing %q:\n%s", want, data)
+		}
+	}
+}
+
+func TestConfigureKubeletKindDefaultsToExtraArgsDropIn(t *testing.T) {
+	tmpDir := t.TempDir()
+	opts := options{
+		Profile:               "kind",
+		HostRoot:              tmpDir,
+		BinDir:                "/var/lib/kubelet/credential-provider",
+		ConfigPath:            "/var/lib/kubelet/credential-provider-config.yaml",
+		ConfigureKubelet:      true,
+		KubeletService:        "kubelet",
+		ForceKubeletExecStart: false,
+	}
+
+	changed, err := configureKubelet(opts)
+	if err != nil {
+		t.Fatalf("configureKubelet() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("configureKubelet() changed = false, want true")
+	}
+
+	dropIn := filepath.Join(tmpDir, "etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf")
+	data, err := os.ReadFile(dropIn)
+	if err != nil {
+		t.Fatalf("read drop-in: %v", err)
+	}
+	if bytes.Contains(data, []byte("ExecStart=")) {
+		t.Fatalf("default kind drop-in contains ExecStart override:\n%s", data)
+	}
+	if !bytes.Contains(data, []byte("KUBELET_EXTRA_ARGS=")) {
+		t.Fatalf("default kind drop-in missing KUBELET_EXTRA_ARGS:\n%s", data)
 	}
 }
 
@@ -104,6 +179,9 @@ func TestOptionsDefaultToNodeModificationAndRestart(t *testing.T) {
 	}
 	if !opts.RestartKubelet {
 		t.Fatal("RestartKubelet = false, want true")
+	}
+	if opts.ForceKubeletExecStart {
+		t.Fatal("ForceKubeletExecStart = true, want false")
 	}
 }
 

@@ -546,6 +546,8 @@ options:
 
 See example files in [`examples/kubernetes/`](examples/kubernetes/).
 
+For kind clusters, also verify kubelet is started with the credential provider flags. If the live kubelet command line is missing `--image-credential-provider-bin-dir` and `--image-credential-provider-config` after install, enable the optional Helm setting `kubelet.forceExecStartOverride=true`. It resets kind kubelet `ExecStart` and appends the provider flags directly; leave it disabled unless `KUBELET_EXTRA_ARGS` is not reflected in the live process.
+
 #### k8s_credential_provider_config.yaml
 
 ```yaml
