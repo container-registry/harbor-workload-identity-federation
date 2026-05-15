@@ -3,7 +3,7 @@ name: credential-provider-harbor
 description: Deploy the credential-provider-harbor binary to Kubernetes nodes for Harbor Workload Identity Federation
 type: application
 version: 0.1.0
-appVersion: "v0.0.1"
+appVersion: "0.0.1"
 keywords:
   - harbor
   - credential-provider
