@@ -9,6 +9,7 @@ This directory contains copy-paste starting points for Harbor Workload Identity 
 | [`github-actions`](github-actions/) | Push and pull images from GitHub Actions using GitHub OIDC tokens. |
 | [`gitlab-ci`](gitlab-ci/) | Push images from GitLab CI using GitLab `id_tokens`. |
 | [`kubernetes`](kubernetes/) | Install and test the kubelet credential provider for secretless Kubernetes image pulls. |
+| [`talos`](talos/) | Install the kubelet credential provider on Talos Linux via a system extension for secretless image pulls. |
 
 ## Before You Start
 

@@ -1,0 +1,35 @@
+# Talos machine config patch that wires the kubelet credential provider.
+#
+# Apply to the worker nodes that pull Harbor images:
+#   talosctl --nodes <worker-ip> patch mc --mode auto \
+#     --patch @examples/talos/talos-machine-config-patch.yaml
+#
+# When machine.kubelet.credentialProviderConfig is set, Talos automatically adds
+#   --image-credential-provider-config=/etc/kubernetes/kubelet-credentialproviderconfig.yaml
+#   --image-credential-provider-bin-dir=/usr/local/lib/kubelet/credentialproviders
+# to the kubelet. The binary in that bin-dir is delivered by the system
+# extension (see credential-provider-extension/); it cannot be written at
+# runtime because the Talos rootfs is immutable.
+#
+# Replace harbor.example.com with your registry host, and keep the audience
+# equal to the audience configured on the Harbor Federated IDP.
+machine:
+  kubelet:
+    credentialProviderConfig:
+      apiVersion: kubelet.config.k8s.io/v1
+      kind: CredentialProviderConfig
+      providers:
+        - name: credential-provider-harbor
+          apiVersion: credentialprovider.kubelet.k8s.io/v1
+          # A bare host matches all images under that registry: the kubelet
+          # does prefix matching on the path and does not glob the path
+          # portion, so harbor.example.com covers harbor.example.com/<any>/<repo>.
+          matchImages:
+            - harbor.example.com
+          defaultCacheDuration: 1h
+          args:
+            - --username=jwt
+          tokenAttributes:
+            requireServiceAccount: true
+            serviceAccountTokenAudience: harbor.example.com
+            cacheType: Token

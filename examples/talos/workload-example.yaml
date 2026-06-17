@@ -1,0 +1,43 @@
+# Sample workload that pulls from Harbor with NO imagePullSecrets, using a
+# dedicated ServiceAccount. The kubelet mints a ServiceAccount token for the
+# Harbor audience, hands it to credential-provider-harbor, and authenticates
+# the pull.
+#
+# The ServiceAccount identity must match the Harbor Federated IDP claim rule:
+#   sub == system:serviceaccount:<namespace>:<service-account>
+# For the manifests below that is:
+#   sub == system:serviceaccount:demo:harbor-puller
+#
+# Replace harbor.example.com and the image reference with your values.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: harbor-puller
+  namespace: demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: harbor-pull-demo
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: harbor-pull-demo
+  template:
+    metadata:
+      labels:
+        app: harbor-pull-demo
+    spec:
+      serviceAccountName: harbor-puller
+      # No imagePullSecrets: the kubelet credential provider supplies the token.
+      containers:
+        - name: app
+          image: harbor.example.com/<project>/<image>:latest
+          imagePullPolicy: Always
