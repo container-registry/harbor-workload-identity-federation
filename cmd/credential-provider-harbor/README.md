@@ -1,6 +1,6 @@
 credential-provider-harbor is an image credential provider plugin for Kubernetes
 that uses service account tokens directly as Harbor registry passwords via
-Workload Identity Federation (FedIDP).
+Federated Robot Accounts.
 
 Usage:
 

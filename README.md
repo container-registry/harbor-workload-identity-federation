@@ -1,10 +1,10 @@
-# Workload Identity Federation Examples to Push/Pull container Images Without Secrets
+# Federated Robot Accounts Examples to Push/Pull container Images Without Secrets
 
-Repository with examples demonstrating how to use Harbor/8gears Container Registry with Workload Identity Federation, eliminating the need for static secrets in CI/CD pipelines and Kubernetes.
+Repository with examples demonstrating how to use Harbor/8gears Container Registry with Federated Robot Accounts, eliminating the need for static secrets in CI/CD pipelines and Kubernetes.
 
 ## Overview
 
-**Workload Identity Federation** allows Harbor to authenticate clients using short-lived JWTs instead of static robot account secrets. By establishing a trust relationship with an external Identity Provider (like GitHub Actions, GitLab CI, or Kubernetes), Harbor can validate tokens and map them to internal robot accounts based on specific claims.
+**Federated Robot Accounts** allow Harbor to authenticate clients using short-lived JWTs instead of static robot account secrets. By establishing a trust relationship with an external Identity Provider (like GitHub Actions, GitLab CI, or Kubernetes), Harbor can validate tokens and map them to internal robot accounts based on specific claims.
 
 ### Benefits
 
@@ -25,7 +25,7 @@ Repository with examples demonstrating how to use Harbor/8gears Container Regist
 
 ## credential-provider-harbor
 
-`credential-provider-harbor` is a Kubernetes kubelet credential provider plugin (KEP-4412) that uses Service Account tokens directly as Harbor registry passwords via Workload Identity Federation (FedIDP).
+`credential-provider-harbor` is a Kubernetes kubelet credential provider plugin (KEP-4412) that uses Service Account tokens directly as Harbor registry passwords via Federated Robot Accounts.
 
 The kubelet calls this binary via stdin/stdout protocol: it receives a `CredentialProviderRequest` containing a service account token and returns a `CredentialProviderResponse` with Basic Auth credentials (`jwt:<SA-token>`).
 
@@ -293,7 +293,7 @@ This example demonstrates how to authenticate to Harbor from a GitHub Actions wo
 See a [successful run example](https://github.com/container-registry/federated-idp-examples/actions/runs/19678450809).
 
 ```yaml
-name: Create Image and Push Using federated IDP
+name: Create Image and Push Using Federated Robot Account
 
 on:
   workflow_dispatch:
@@ -410,7 +410,7 @@ Here's an example of what a GitHub Actions OIDC token looks like:
   "runner_environment": "github-hosted",
   "sha": "15a5ebfa3fb5ddf10c4b4250e14496bec7f03a56",
   "sub": "repo:container-registry/federated-idp-examples:ref:refs/heads/main",
-  "workflow": "Create Image and Push Using federated IDP",
+  "workflow": "Create Image and Push Using Federated Robot Account",
   "workflow_ref": "container-registry/federated-idp-examples/.github/workflows/example_1.yml@refs/heads/main",
   "workflow_sha": "15a5ebfa3fb5ddf10c4b4250e14496bec7f03a56"
 }
@@ -569,7 +569,7 @@ Here's an example of what a GitLab CI OIDC token looks like:
 
 ## Kubernetes (k3s/k3d) Setup
 
-This section describes how to set up a local k3s/k3d cluster with Kubernetes Image Credential Provider (KEP-4412) to pull images using Service Account tokens (Workload Identity Federation).
+This section describes how to set up a local k3s/k3d cluster with Kubernetes Image Credential Provider (KEP-4412) to pull images using Service Account tokens (Federated Robot Accounts).
 
 ### How It Works
 

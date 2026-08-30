@@ -1,4 +1,4 @@
-name: Create Image and Push Using federated IDP
+name: Create Image and Push Using Federated Robot Account
 
 on:
   workflow_dispatch:

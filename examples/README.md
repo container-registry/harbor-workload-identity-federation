@@ -1,6 +1,6 @@
 # Examples
 
-This directory contains copy-paste starting points for Harbor Workload Identity Federation.
+This directory contains copy-paste starting points for Harbor Federated Robot Accounts.
 
 ## Available Examples
 
