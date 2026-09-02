@@ -1,0 +1,16 @@
+# Talos Image Factory schematic that includes the official
+# harbor-credential-provider system extension.
+#
+#   curl -X POST --data-binary @examples/talos/schematic.yaml https://factory.talos.dev/schematics
+#
+# Schematic IDs are content-addressed. This exact file (only this extension,
+# no other customization) yields:
+#   41acf9f8f17d138cb7ca2439b4c415c55555cdb608c995379451976e4125797b
+#
+# The extension is in the factory catalog for Talos v1.14.0-rc.1 and later.
+# For older Talos releases the factory rejects it; use the imager route in
+# README.md instead.
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/harbor-credential-provider

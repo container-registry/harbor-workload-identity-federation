@@ -1,0 +1,34 @@
+# ClusterRole that allows kubelets (the system:nodes group) to request service
+# account tokens with the Harbor audience. Required by the
+# ServiceAccountNodeAudienceRestriction feature gate (default-on in k8s 1.34+).
+# Without it, kubelet token requests fail with
+# "audience not found in pod spec volume".
+#
+# The audience goes in the `resources:` field below (NOT resourceNames). That
+# string MUST equal the audience used in the kubelet CredentialProviderConfig
+# (tokenAttributes.serviceAccountTokenAudience) and on the Harbor Federated IDP.
+# Replace harbor.example.com with that audience value.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-harbor-audience-token
+rules:
+  - apiGroups: [""]
+    # The audience string is the RBAC resource here (resource-as-audience).
+    resources:
+      - harbor.example.com
+    verbs:
+      - request-serviceaccounts-token-audience
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-harbor-audience-token
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: node-harbor-audience-token
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: system:nodes
