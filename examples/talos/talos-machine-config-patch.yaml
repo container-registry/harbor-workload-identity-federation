@@ -7,9 +7,9 @@
 # When machine.kubelet.credentialProviderConfig is set, Talos automatically adds
 #   --image-credential-provider-config=/etc/kubernetes/kubelet-credentialproviderconfig.yaml
 #   --image-credential-provider-bin-dir=/usr/local/lib/kubelet/credentialproviders
-# to the kubelet. The binary in that bin-dir is delivered by the system
-# extension (see credential-provider-extension/); it cannot be written at
-# runtime because the Talos rootfs is immutable.
+# to the kubelet. The binary in that bin-dir is delivered by the official
+# siderolabs/harbor-credential-provider system extension; it cannot be written
+# at runtime because the Talos rootfs is immutable.
 #
 # Replace harbor.example.com with your registry host, and keep the audience
 # equal to the audience configured on the Harbor Federated IDP.
@@ -19,13 +19,18 @@ machine:
       apiVersion: kubelet.config.k8s.io/v1
       kind: CredentialProviderConfig
       providers:
-        - name: credential-provider-harbor
+        # Must equal the binary file name installed by the extension:
+        # /usr/local/lib/kubelet/credentialproviders/harbor-credential-provider
+        # (note: NOT credential-provider-harbor as in the other examples).
+        - name: harbor-credential-provider
           apiVersion: credentialprovider.kubelet.k8s.io/v1
           # A bare host matches all images under that registry: the kubelet
           # does prefix matching on the path and does not glob the path
           # portion, so harbor.example.com covers harbor.example.com/<any>/<repo>.
           matchImages:
             - harbor.example.com
+          # Required by the kubelet config API. The provider itself returns a
+          # zero cache duration because the SA token is the password.
           defaultCacheDuration: 1h
           args:
             - --username=jwt
