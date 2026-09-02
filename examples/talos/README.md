@@ -11,6 +11,7 @@ at runtime. Instead, the binary ships as the official Talos system extension
 [`siderolabs/harbor-credential-provider`](https://github.com/siderolabs/extensions/tree/main/container-runtime/harbor-credential-provider),
 and the kubelet is wired through `machine.kubelet.credentialProviderConfig`.
 
+> [!WARNING]
 > **A node reboot is required.** Installing the extension is a `talosctl upgrade`,
 > which reboots the node. Plan for it on the workers that pull Harbor images.
 
@@ -29,6 +30,7 @@ Placeholders used below: `harbor.example.com` (the Harbor host, used here as the
 See the [root README](../../README.md) for the full Harbor Federated IDP
 reference and per-provider JWT claim tables.
 
+> [!NOTE]
 > **About the audience.** The audience (`aud`) is just an agreed identifier
 > string — it does **not** have to be a domain. The only hard rule is that the
 > **same value** appears in all three places: the kubelet
@@ -99,6 +101,7 @@ repository (`cmd/credential-provider-harbor`):
 | Image Factory catalog | Talos **v1.14.0-rc.1 and later** |
 | Source | [siderolabs/extensions/container-runtime/harbor-credential-provider](https://github.com/siderolabs/extensions/tree/main/container-runtime/harbor-credential-provider) |
 
+> [!IMPORTANT]
 > **Naming.** On Talos the binary and therefore the provider `name` in the
 > kubelet config is **`harbor-credential-provider`**, not
 > `credential-provider-harbor` as in the other examples of this repository. The
