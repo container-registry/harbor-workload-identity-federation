@@ -1,6 +1,6 @@
 # Sample workload that pulls from Harbor with NO imagePullSecrets, using a
 # dedicated ServiceAccount. The kubelet mints a ServiceAccount token for the
-# Harbor audience, hands it to credential-provider-harbor, and authenticates
+# Harbor audience, hands it to harbor-credential-provider, and authenticates
 # the pull.
 #
 # The ServiceAccount identity must match the Harbor Federated IDP claim rule:
