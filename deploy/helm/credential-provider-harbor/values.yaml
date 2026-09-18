@@ -52,8 +52,13 @@ credentialProvider:
 installer:
   # -- Host root mount path inside the installer container
   hostRoot: /host
-  # -- Keep the installer pod running after node installation completes
+  # -- Keep the installer pod running after node installation completes.
+  # The pod has to stay up: the DaemonSet restarts an exited container, which
+  # would reinstall on every restart. Turn this off only for a one-shot debug run.
   sleep: true
+  # -- Path on the host that the installer touches once a node is done.
+  # The readiness probe watches this file.
+  installedMarker: /var/run/credential-provider-harbor-installed
 
 # Kubelet configuration
 kubelet:
@@ -93,6 +98,36 @@ serviceAccount:
 # -- Pod annotations
 podAnnotations: {}
 
+# -- Pod labels
+podLabels: {}
+
+# -- DaemonSet update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# -- Priority class for the installer pods. Node image pulls depend on this
+# component, so it should be scheduled ahead of ordinary workloads.
+priorityClassName: system-node-critical
+
+# -- Seconds the pod gets to shut down. The installer has no cleanup to do.
+terminationGracePeriodSeconds: 10
+
+# -- Readiness probe that reports whether the node finished installing.
+# `kubectl rollout status` then means what it looks like it means.
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Container security context. The installer writes to the host filesystem and
+# restarts kubelet, so it needs privileges. Relaxing these will break it.
+securityContext:
+  privileged: true
+
 # -- Extra environment variables for the installer container
 extraEnv: []
 # - name: PRESERVE_ECR_PROVIDER
@@ -109,6 +144,9 @@ resources: {}
 
 # -- Node selector
 nodeSelector: {}
+
+# -- Affinity rules
+affinity: {}
 
 # -- Tolerations (defaults to run on all nodes including control plane)
 tolerations:

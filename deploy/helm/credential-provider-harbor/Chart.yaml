@@ -1,7 +1,8 @@
 apiVersion: v2
 name: credential-provider-harbor
-description: Deploy the credential-provider-harbor binary to Kubernetes nodes for Harbor Federated Robot Accounts
+description: Installs the credential-provider-harbor kubelet plugin on every node so pods pull Harbor images with service account tokens instead of pull secrets
 type: application
+kubeVersion: ">=1.34.0-0"
 version: 0.1.1
 appVersion: "0.0.1" # x-release-please-version
 keywords:
@@ -13,6 +14,19 @@ keywords:
   - kubelet
 maintainers:
   - name: container-registry
+    url: https://github.com/container-registry
+icon: https://container-registry.com/img/logo.svg
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/operator: "false"
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/container-registry/harbor-workload-identity-federation
+    - name: documentation
+      url: https://container-registry.com/docs/
+  artifacthub.io/maintainers: |
+    - name: container-registry
+      email: support@8gears.com
 home: https://github.com/container-registry/harbor-workload-identity-federation
 sources:
   - https://github.com/container-registry/harbor-workload-identity-federation

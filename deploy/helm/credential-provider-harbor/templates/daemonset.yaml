@@ -9,16 +9,28 @@ spec:
   selector:
     matchLabels:
       {{- include "credential-provider-harbor.selectorLabels" . | nindent 6 }}
+  {{- with .Values.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   template:
     metadata:
+      {{- /* Selector labels win, so a podLabels entry cannot leave the pod
+             template not matching spec.selector. Merged rather than appended,
+             because a duplicate YAML key is rejected on apply. */}}
       labels:
-        {{- include "credential-provider-harbor.selectorLabels" . | nindent 8 }}
+        {{- $selector := include "credential-provider-harbor.selectorLabels" . | fromYaml }}
+        {{- toYaml (merge $selector (deepCopy .Values.podLabels)) | nindent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
       hostPID: true
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       serviceAccountName: {{ include "credential-provider-harbor.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -29,7 +41,7 @@ spec:
         image: "{{ .Values.image.repository }}:{{ include "credential-provider-harbor.imageTag" . }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         securityContext:
-          privileged: true
+          {{- toYaml .Values.securityContext | nindent 10 }}
         env:
         - name: PROFILE
           value: {{ .Values.profile | quote }}
@@ -39,6 +51,8 @@ spec:
           value: /usr/local/bin/credential-provider-harbor
         - name: SLEEP_FOREVER
           value: {{ .Values.installer.sleep | quote }}
+        - name: INSTALLED_MARKER
+          value: {{ .Values.installer.installedMarker | quote }}
         - name: BINARY_NAME
           value: {{ .Values.credentialProvider.binaryName | quote }}
         - name: REGISTRY_HOST
@@ -76,6 +90,18 @@ spec:
         - /usr/local/bin/install-credential-provider.sh
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
+        {{- if .Values.readinessProbe.enabled }}
+        readinessProbe:
+          exec:
+            command:
+              - test
+              - -f
+              - {{ include "credential-provider-harbor.markerPath" . | quote }}
+          initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+        {{- end }}
         volumeMounts:
         - name: host-root
           mountPath: {{ .Values.installer.hostRoot | quote }}
@@ -92,6 +118,10 @@ spec:
           type: DirectoryOrCreate
       {{- with .Values.nodeSelector }}
       nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.tolerations }}

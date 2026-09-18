@@ -71,6 +71,12 @@ helm upgrade --install credential-provider-harbor \
   --set registry.audience="${HARBOR_AUDIENCE}"
 ```
 
+Pods report ready once their node has the binary and the config in place, so the rollout tells you when the cluster is done:
+
+```bash
+kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+```
+
 Select a platform profile when the default generic kubelet paths are not right for your cluster:
 
 | Profile | Use case | Host config path |
@@ -216,7 +222,7 @@ Configure kubelet flags:
 --image-credential-provider-config=/etc/kubernetes/credential-providers/config.yaml
 ```
 
-See [`deploy/helm/credential-provider-harbor/values.yaml`](deploy/helm/credential-provider-harbor/values.yaml) for all configurable values.
+The [chart README](deploy/helm/credential-provider-harbor/README.md) covers the values you are likely to change; [`values.yaml`](deploy/helm/credential-provider-harbor/values.yaml) is the complete list. `values.schema.json` rejects the common mistakes at install time: an empty `registry.host`, an unknown profile, `profile=custom` without host paths, a relative host path, or a malformed cache duration.
 
 ### Building from Source
 

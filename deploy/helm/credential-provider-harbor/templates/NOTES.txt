@@ -13,12 +13,29 @@ The selected profile controls default host paths:
   k3s/k3d:            /var/lib/rancher/credentialprovider/bin and /var/lib/rancher/credentialprovider/config.yaml
   kind:               /var/lib/kubelet/credential-provider and /var/lib/kubelet/credential-provider-config.yaml
 
-To check the status of the deployer:
+
+{{ if .Values.readinessProbe.enabled -}}
+A pod turns ready once its node has the binary and the config in place, so
+rollout status tells you when every node is done:
+
+  kubectl rollout status daemonset/{{ include "credential-provider-harbor.fullname" . }} -n {{ include "credential-provider-harbor.namespace" . }}
+{{ else -}}
+The readiness probe is disabled, so pod readiness says nothing about whether a
+node finished installing. Read the logs instead.
+{{ end }}
+
+To look at the deployer:
 
   kubectl get daemonset {{ include "credential-provider-harbor.fullname" . }} -n {{ include "credential-provider-harbor.namespace" . }}
   kubectl logs -l app.kubernetes.io/name={{ include "credential-provider-harbor.name" . }} -n {{ include "credential-provider-harbor.namespace" . }}
 
-{{- if not .Values.kubelet.configure }}
+{{- if and (not .Values.kubelet.configure) (has .Values.profile (list "eks" "aws")) }}
+
+Kubelet configuration is off, which is correct for this profile: the EKS AMI
+already starts kubelet with the credential provider flags pointing at
+/etc/eks/image-credential-provider. Nothing further to do on the nodes.
+
+{{- else if not .Values.kubelet.configure }}
 
 IMPORTANT: Kubelet configuration is disabled. You must configure the kubelet
 on each node to use the installed credential provider paths for your profile:
