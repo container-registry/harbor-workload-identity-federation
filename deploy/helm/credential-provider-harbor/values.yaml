@@ -4,7 +4,9 @@
 image:
   # -- Container registry and repository
   repository: 8gears.container-registry.com/8gcr/credential-provider-harbor-deployer
-  # -- Image tag (defaults to Chart.appVersion)
+  # -- Image tag. Defaults to "v" plus Chart.appVersion, which is how releases
+  # publish the image. Set explicitly to run a development build, for example
+  # a tag from a push to main.
   tag: ""
   # -- Image pull policy
   pullPolicy: IfNotPresent
