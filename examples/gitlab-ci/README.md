@@ -56,3 +56,7 @@ If you do not run a remote BuildKit service, replace the build step with your ow
 ## Notes
 
 The example prints only decoded JWT header and payload for debugging. Do not print the raw token in real pipelines.
+
+## Harbor Side
+
+Configuring the Federated IDP and the robot account claim rules is documented at [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).
