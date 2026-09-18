@@ -1,0 +1,30 @@
+# GKE Standard, Container-Optimized OS node images ONLY.
+#
+# COS mounts /usr read-only and noexec. /home/kubernetes/bin sits on the
+# stateful partition and is executable, which is where GKE itself puts node
+# binaries, so the provider goes there instead. The nodeSelector below keeps
+# this release on COS nodes; use values.yaml for the Ubuntu pools.
+#
+# The label value is the node image type. Since GKE 1.24 dropped the Docker
+# runtime, COS pools are cos_containerd; the plain cos value only ever matched
+# the Docker image and now matches nothing, which makes the DaemonSet skip
+# every node and the install do nothing at all. Confirm with:
+#   kubectl get nodes -L cloud.google.com/gke-os-distribution
+
+profile: custom
+
+nodeSelector:
+  cloud.google.com/gke-os-distribution: cos_containerd
+
+credentialProvider:
+  binDir: /home/kubernetes/bin/credential-providers
+  configPath: /etc/kubernetes/credential-providers/config.yaml
+  configFormat: yaml
+
+registry:
+  host: harbor.example.com
+  audience: harbor.example.com
+
+kubelet:
+  configure: true
+  restart: true
