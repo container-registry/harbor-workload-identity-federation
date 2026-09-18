@@ -13,6 +13,15 @@ Repository with examples demonstrating how to use Harbor/8gears Container Regist
 - **Simplified rotation**: No secret rotation required since tokens are short-lived
 - **Audit trail**: Better traceability of which workload accessed the registry
 
+## Documentation
+
+The Harbor side of this feature is documented at https://container-registry.com/docs/:
+
+- [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/) — configuring the IDP, JWKS validation and key rotation, claim rules
+- [Authenticating a Workload with Federated Identity](https://container-registry.com/docs/2.16/user-manual/images/authenticating-a-workload-with-federated-identity/) — presenting a token as a registry credential
+
+This repository holds the runnable parts: the kubelet credential provider, the installer, the Helm chart, the per-distribution guides, and the GitHub Actions and GitLab CI examples.
+
 ## Supported Identity Providers
 
 - GitHub Actions
@@ -279,7 +288,7 @@ a chart-vX.Y.Z release  oci://8gears.container-registry.com/8gcr/credential-prov
 
 ## GitHub Actions Example
 
-This example demonstrates how to authenticate to Harbor from a GitHub Actions workflow using OIDC tokens.
+This example demonstrates how to authenticate to Harbor from a GitHub Actions workflow using OIDC tokens. For the Harbor-side configuration, see [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).
 
 ### Prerequisites
 
@@ -828,6 +837,8 @@ spec:
 ---
 
 ## Security Considerations
+
+See also the security notes on the [Federated Identity Provider page](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).
 
 - Tokens are short-lived (typically 5-10 minutes)
 - Each pipeline/workflow run gets a unique token

@@ -21,7 +21,7 @@ AKS nodes used to need a per-node script to add the provider flags to `KUBELET_F
 
 ## Before You Start
 
-Create a Harbor Federated IDP for the workload issuer, then create a federated robot account with pull or push permissions for the target project.
+Create a Harbor Federated IDP for the workload issuer, then create a federated robot account with pull or push permissions for the target project. The Harbor side is documented at [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/); [Authenticating a Workload with Federated Identity](https://container-registry.com/docs/2.16/user-manual/images/authenticating-a-workload-with-federated-identity/) covers presenting the token.
 
 Use the same audience value in both places:
 
