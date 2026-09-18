@@ -1,2 +1,5 @@
 bin/
+dist/
 test-fedidp/
+.task/
+ws/

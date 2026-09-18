@@ -1,0 +1,49 @@
+name: Apply Repository Settings
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/settings.yml'
+      - '.github/scripts/apply-settings.js'
+  schedule:
+    - cron: '0 9 * * 1'  # Weekly Monday 9am UTC - drift check
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: |
+          verify - Apply settings then verify they were applied correctly (default)
+          apply  - Apply settings.yml to GitHub without verification
+          check  - Detect drift: compare settings.yml vs GitHub, fail if different (default on schedule)
+        type: choice
+        options: [verify, apply, check]
+        default: verify
+
+# GITHUB_TOKEN can manage labels but not repository settings (description, etc.)
+# For full access: create PAT with 'repo' scope, add as SETTINGS_TOKEN secret
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  settings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.repository_owner == github.event.repository.owner.login
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install js-yaml
+        run: npm install js-yaml
+
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          # Scheduled runs report drift instead of silently reapplying.
+          # TODO: restore 'verify' for push runs when the Go action is ready.
+          INPUT_MODE: ${{ inputs.mode || (github.event_name == 'schedule' && 'check' || 'apply') }}
+        with:
+          github-token: ${{ secrets.SETTINGS_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const script = require('./.github/scripts/apply-settings.js')
+            await script({ github, context, core })

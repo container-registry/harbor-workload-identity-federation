@@ -1,0 +1,36 @@
+name: Welcome
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/first-interaction@3c71ce730280171fd1cfb57c00c774f8998586f7 # v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: |
+            Thanks for opening your first issue! 🎉
+
+            A maintainer will review this soon. In the meantime:
+            - Check the [documentation](https://container-registry.com/docs/) for common solutions
+            - Search [existing issues](https://github.com/${{ github.repository }}/issues) for similar reports
+
+          pr-message: |
+            Thanks for your first pull request! 🎉
+
+            A maintainer will review this soon. Please ensure:
+            - [ ] Tests pass locally
+            - [ ] Code follows our style guidelines
+            - [ ] Commits are signed off (DCO)
+            - [ ] PR title follows [Conventional Commits](https://www.conventionalcommits.org/)
+
+            Check out our [Contributing Guide](https://github.com/${{ github.repository }}/blob/main/CONTRIBUTING.md) for more details.

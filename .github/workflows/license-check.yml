@@ -1,0 +1,52 @@
+name: License Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/license-check.yml'
+  pull_request:
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/license-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  license-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install go-licenses
+        # Pinned: an upstream release must not fail an unrelated pull request.
+        run: go install github.com/google/go-licenses@v1.6.0
+
+      - name: Check licenses
+        run: |
+          # permissive covers MIT and BSD, which is most of the dependency tree.
+          # Disallowing it would fail every run.
+          go-licenses check ./... \
+            --disallowed_types=forbidden,restricted,reciprocal,unknown \
+            --ignore=github.com/container-registry/harbor-workload-identity-federation
+
+      - name: Generate license report
+        if: always()
+        run: |
+          go-licenses report ./... > licenses.txt 2>&1 || true
+          echo "## License Report" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -100 licenses.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Documentation
+    url: https://container-registry.com/docs/
+    about: Federated Robot Accounts guides and reference documentation
+  - name: Technical Support
+    url: https://container-registry.com/contact/support/
+    about: Commercial support for 8gears Container Registry customers
+  - name: Security Vulnerability
+    url: https://github.com/container-registry/harbor-workload-identity-federation/security/advisories/new
+    about: Report security vulnerabilities privately
