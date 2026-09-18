@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# CodeRabbit reviews only pull requests targeting the default branch unless
+# base branches are listed here. Work in this repository is often split into a
+# stack of pull requests, where each one targets the branch below it, and those
+# were being skipped with "reviews are disabled for this base branch" -- so the
+# pull requests that most need a second pair of eyes got none.
+#
+# CodeRabbit reads this file from the head branch of a same-repository pull
+# request, and from the base branch for pull requests from forks.
+
+reviews:
+  auto_review:
+    # Review every base branch, not just the default one. Narrow this to
+    # specific patterns if review volume becomes a problem.
+    base_branches:
+      - ".*"
