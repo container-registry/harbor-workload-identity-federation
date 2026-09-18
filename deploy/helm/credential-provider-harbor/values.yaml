@@ -52,8 +52,18 @@ credentialProvider:
 installer:
   # -- Host root mount path inside the installer container
   hostRoot: /host
-  # -- Keep the installer pod running after node installation completes
+  # -- Keep the installer pod running after node installation completes.
+  # The pod has to stay up: the DaemonSet restarts an exited container, which
+  # would reinstall on every restart. Turn this off only for a one-shot debug run.
   sleep: true
+  # -- Path on the host the installer writes once a node is done. It records
+  # the install ID of the revision that wrote it, and the readiness probe greps
+  # for that ID, so a marker left behind by an earlier revision or an earlier
+  # release cannot report a new pod ready before it has installed anything.
+  # Keep it on persistent storage. Anything under /var/run or /run is tmpfs and
+  # is emptied at boot, and a node that loses the marker looks uninstalled and
+  # gets its kubelet restarted again on every reboot.
+  installedMarker: /var/lib/credential-provider-harbor/install-marker
 
 # Kubelet configuration
 kubelet:
@@ -61,6 +71,9 @@ kubelet:
   configure: true
   # -- Whether to restart kubelet after installing the credential provider.
   # Enabled by default so Helm install makes the node ready immediately.
+  # maxUnavailable below serializes this across an upgrade but not across the
+  # first install, when the DaemonSet controller places a pod on every node at
+  # once. See "First Install" in the chart README for the staged alternatives.
   restart: true
   # -- Override kubelet service name. Defaults by profile when empty.
   serviceName: ""
@@ -90,8 +103,47 @@ serviceAccount:
   # -- ServiceAccount name (auto-generated if empty)
   name: ""
 
-# -- Pod annotations
+# -- Pod annotations. Kubernetes annotations are string to string, so quote a
+# value that would otherwise be read as a boolean or a number.
 podAnnotations: {}
+
+# -- Pod labels added to the installer pods. Kubernetes labels are string to
+# string, so quote a value that would otherwise be read as a boolean or a
+# number. The selector labels are merged in on top, so an entry here cannot
+# leave the pod template not matching the DaemonSet selector.
+podLabels: {}
+
+# -- DaemonSet update strategy. Installing restarts kubelet, so updates have to
+# roll one node at a time. values.schema.json pins this: Recreate, a larger
+# maxUnavailable, and any maxSurge are rejected at install time.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# -- Priority class for the installer pods. Node image pulls depend on this
+# component, so it should be scheduled ahead of ordinary workloads.
+priorityClassName: system-node-critical
+
+# -- Seconds the pod gets to shut down. The installer has no cleanup to do.
+terminationGracePeriodSeconds: 10
+
+# -- Readiness probe that reports whether the node finished installing this
+# revision. The installer removes the marker when it starts and rewrites it only
+# after the kubelet restart returns, so `kubectl rollout status` means what it
+# looks like it means and maxUnavailable: 1 cannot advance early.
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Container security context. The installer writes to the host filesystem and
+# restarts kubelet, so it needs privileges. Relaxing these will break it, which
+# is why values.schema.json requires privileged: true.
+securityContext:
+  privileged: true
 
 # -- Extra environment variables for the installer container
 extraEnv: []
@@ -109,6 +161,9 @@ resources: {}
 
 # -- Node selector
 nodeSelector: {}
+
+# -- Affinity rules
+affinity: {}
 
 # -- Tolerations (defaults to run on all nodes including control plane)
 tolerations:

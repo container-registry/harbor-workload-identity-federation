@@ -154,16 +154,212 @@ tasks:
   helm-lint:
     desc: Lint the Helm chart
     cmds:
-      - helm lint deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com
+      - helm lint {{.CHART_DIR}}/ --strict --set registry.host=harbor.example.com
 
   helm-template:
-    desc: Render the Helm chart for supported profiles
+    desc: Render every profile, every branch a value switches on, and the install notes
     cmds:
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=generic >/dev/null
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=eks >/dev/null
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=k3s >/dev/null
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=kind >/dev/null
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=gke >/dev/null
+      - |
+        # One entry point for every render: the chart path and the one required
+        # value live here, each case below adds only what makes it that case.
+        # The manifest is captured rather than piped, because a pipeline runs
+        # helm in a subshell where a failed render cannot stop the task.
+        render() {
+          desc=$1; shift
+          manifest=$(helm template {{.CHART}} {{.CHART_DIR}}/ \
+            --set registry.host=harbor.example.com "$@" 2>&1) || {
+            echo "ERROR: rendering $desc failed:"; echo "$manifest"; exit 1
+          }
+          echo "rendered: $desc"
+        }
+        renders_kind() {
+          desc=$1; kind=$2; shift 2
+          render "$desc" "$@"
+          printf '%s\n' "$manifest" | grep -q "^kind: $kind$" || {
+            echo "ERROR: $desc renders no $kind"; exit 1
+          }
+          echo "render ok: $desc renders a $kind"
+        }
+        omits_kind() {
+          desc=$1; kind=$2; shift 2
+          render "$desc" "$@"
+          if printf '%s\n' "$manifest" | grep -q "^kind: $kind$"; then
+            echo "ERROR: $desc still renders a $kind"; exit 1
+          fi
+          echo "render ok: $desc renders no $kind"
+        }
+        renders_line() {
+          desc=$1; line=$2; shift 2
+          render "$desc" "$@"
+          printf '%s\n' "$manifest" | grep -qF "$line" || {
+            echo "ERROR: $desc never renders: $line"; exit 1
+          }
+          echo "render ok: $desc renders \"$line\""
+        }
+        for profile in generic eks aws k3s k3d kind gke; do
+          render "profile $profile" --set profile="$profile"
+        done
+        render "profile custom with host paths" \
+          --set profile=custom \
+          --set credentialProvider.binDir=/opt/credential-providers \
+          --set credentialProvider.configPath=/etc/credential-providers/config.yaml
+        # The profile loop runs every template on the defaults, which leaves the
+        # branches a value switches on unrendered. Each of these picks one.
+        render "kubelet.configure=false on eks" --set profile=eks --set kubelet.configure=false
+        render "kubelet.configure=false" --set kubelet.configure=false
+        render "kubelet.restart=false" --set kubelet.restart=false
+        render "readinessProbe.enabled=false" --set readinessProbe.enabled=false
+        render "a relocated installedMarker" --set installer.installedMarker=/var/opt/cph/marker
+        renders_line "podLabels" "team: platform" --set podLabels.team=platform
+        renders_line "podLabels" "app.kubernetes.io/name: credential-provider-harbor" \
+          --set podLabels.team=platform
+        renders_line "a podLabel that tries to displace a selector label" \
+          "app.kubernetes.io/name: credential-provider-harbor" \
+          --set podLabels."app\.kubernetes\.io/name"=hijacked
+        render "podAnnotations" --set podAnnotations.owner=platform
+        # podLabels and podAnnotations emptied the way a values file empties
+        # them: the key is present with no value, so the template sees nil.
+        render "podLabels emptied out" --set podLabels=null
+        render "podAnnotations emptied out" --set podAnnotations=null
+        # The opt-outs, which render fewer manifests rather than different ones:
+        # a broken one shows up as a missing or a leftover object, not as a
+        # render error, so each is checked by kind.
+        renders_kind "the defaults" ClusterRole
+        renders_kind "the defaults" ServiceAccount
+        omits_kind "nodeAudienceRbac.create=false" ClusterRole --set nodeAudienceRbac.create=false
+        omits_kind "nodeAudienceRbac.create=false" ClusterRoleBinding --set nodeAudienceRbac.create=false
+        omits_kind "serviceAccount.create=false" ServiceAccount --set serviceAccount.create=false
+        renders_line "serviceAccount.create=false" "serviceAccountName: default" \
+          --set serviceAccount.create=false
+        renders_line "serviceAccount.create=false with a name" "serviceAccountName: preexisting" \
+          --set serviceAccount.create=false --set serviceAccount.name=preexisting
+      - |
+        # helm template executes NOTES.txt but throws the output away, so a
+        # branch that renders and still says the wrong thing ships silently.
+        # --dry-run=client prints it, and needs no cluster. The install is
+        # captured before the NOTES are filtered out of it: through a pipe, a
+        # failed install leaves sed succeeding on nothing and every assertion
+        # below reading an empty string as agreement.
+        notes() {
+          desc=$1; shift
+          out=$(helm install {{.CHART}} {{.CHART_DIR}}/ --dry-run=client \
+            --set registry.host=harbor.example.com "$@" 2>&1) || {
+            echo "ERROR: the install notes for $desc failed to render:"; echo "$out"; exit 1
+          }
+          notes_text=$(printf '%s\n' "$out" | sed -n '/^NOTES:/,$p')
+          if [ -z "$notes_text" ]; then
+            echo "ERROR: the install for $desc printed no NOTES section"; exit 1
+          fi
+        }
+        says() {
+          desc=$1; text=$2; shift 2
+          notes "$desc" "$@"
+          printf '%s\n' "$notes_text" | grep -qF "$text" || {
+            echo "ERROR: the install notes for $desc never say: $text"; exit 1
+          }
+          echo "notes ok: $desc says \"$text\""
+        }
+        silent_on() {
+          desc=$1; text=$2; shift 2
+          notes "$desc" "$@"
+          if printf '%s\n' "$notes_text" | grep -qF "$text"; then
+            echo "ERROR: the install notes for $desc still claim: $text"; exit 1
+          fi
+          echo "notes ok: $desc drops \"$text\""
+        }
+        says "the defaults" "kubelet restart included"
+        says "the defaults" "this is a first install"
+        silent_on "kubelet.restart=false" "kubelet restart included" --set kubelet.restart=false
+        says "kubelet.restart=false" "Kubelet restart is off" --set kubelet.restart=false
+        says "kubelet.restart=false" "IMPORTANT: Kubelet restart is disabled" --set kubelet.restart=false
+        silent_on "kubelet.restart=false" "this is a first install" --set kubelet.restart=false
+        says "kubelet.configure=false on eks" "Kubelet configuration is off" \
+          --set profile=eks --set kubelet.configure=false
+        says "kubelet.configure=false on eks" "EKS-optimized AL2023 AMI" \
+          --set profile=eks --set kubelet.configure=false
+        says "kubelet.configure=false on eks" "Bottlerocket" \
+          --set profile=eks --set kubelet.configure=false
+        says "kubelet.configure=false on generic" "IMPORTANT: Kubelet configuration is disabled" \
+          --set kubelet.configure=false
+        says "readinessProbe.enabled=false" "The readiness probe is disabled" \
+          --set readinessProbe.enabled=false
+        says "the defaults" "The chart created"
+        says "nodeAudienceRbac.create=false" "Create equivalent RBAC" \
+          --set nodeAudienceRbac.create=false
+        echo "the install notes match every configuration above"
+
+  helm-schema-check:
+    desc: Check that values.schema.json rejects the misconfigurations it is meant to catch
+    cmds:
+      - |
+        # A render can fail for reasons that have nothing to do with the
+        # schema, which would make every case below look like a pass.
+        reject() {
+          desc=$1; shift
+          out=$(helm template {{.CHART}} {{.CHART_DIR}}/ "$@" 2>&1) && {
+            echo "ERROR: schema accepted $desc"; exit 1
+          }
+          case "$out" in
+            *"don't meet the specifications of the schema"*) ;;
+            *) echo "ERROR: $desc failed for another reason, not the schema:"; echo "$out"; exit 1 ;;
+          esac
+          echo "rejected: $desc"
+        }
+        reject "an empty registry.host"
+        reject "an unknown profile" --set registry.host=harbor.example.com --set profile=openshift
+        reject "profile=custom without host paths" --set registry.host=harbor.example.com --set profile=custom
+        reject "a bad cacheDuration" --set registry.host=harbor.example.com --set registry.cacheDuration=1hour
+        reject "a relative hostRoot" --set registry.host=harbor.example.com --set installer.hostRoot=host
+        reject "a hostRoot of /" --set registry.host=harbor.example.com --set installer.hostRoot=/
+        reject "a hostRoot with a trailing slash" --set registry.host=harbor.example.com --set installer.hostRoot=/host/
+        reject "a relative installedMarker" --set registry.host=harbor.example.com --set installer.installedMarker=run/marker
+        reject "an installedMarker on /run" --set registry.host=harbor.example.com --set installer.installedMarker=/run/credential-provider-harbor-installed
+        reject "an installedMarker on /var/run" --set registry.host=harbor.example.com --set installer.installedMarker=/var/run/credential-provider-harbor-installed
+        reject "an installedMarker of /run itself" --set registry.host=harbor.example.com --set installer.installedMarker=/run
+        reject "an installedMarker of /" --set registry.host=harbor.example.com --set installer.installedMarker=/
+        reject "an installedMarker with a trailing slash" --set registry.host=harbor.example.com --set installer.installedMarker=/var/lib/credential-provider-harbor/
+        reject "a binDir of /" --set registry.host=harbor.example.com --set credentialProvider.binDir=/
+        reject "a configPath of /" --set registry.host=harbor.example.com --set credentialProvider.configPath=/
+        reject "a configPath with a trailing slash" --set registry.host=harbor.example.com --set credentialProvider.configPath=/etc/credential-providers/
+        reject "a systemdDropInPath of /" --set registry.host=harbor.example.com --set kubelet.systemdDropInPath=/
+        reject "a k3sConfigDropInPath with a trailing slash" --set registry.host=harbor.example.com --set kubelet.k3sConfigDropInPath=/etc/rancher/k3s/config.yaml.d/
+        reject "a relative binDir" --set registry.host=harbor.example.com --set credentialProvider.binDir=opt/providers
+        reject "a relative configPath" --set registry.host=harbor.example.com --set credentialProvider.configPath=etc/config.yaml
+        reject "a binaryName with a path in it" --set registry.host=harbor.example.com --set credentialProvider.binaryName=../credential-provider-harbor
+        reject "a binaryName of ." --set registry.host=harbor.example.com --set credentialProvider.binaryName=.
+        reject "a binaryName of .." --set registry.host=harbor.example.com --set credentialProvider.binaryName=..
+        reject "updateStrategy.type=Recreate" --set registry.host=harbor.example.com --set updateStrategy.type=Recreate
+        reject "a maxUnavailable above one" --set registry.host=harbor.example.com --set updateStrategy.rollingUpdate.maxUnavailable=5
+        reject "a maxSurge that adds a second installer per node" --set registry.host=harbor.example.com --set updateStrategy.rollingUpdate.maxSurge=1
+        reject "an unprivileged securityContext" --set registry.host=harbor.example.com --set securityContext.privileged=false
+        reject "a securityContext with privileged dropped" --set registry.host=harbor.example.com --set securityContext.privileged=null
+        reject "a securityContext removed wholesale" --set registry.host=harbor.example.com --set securityContext=null
+        reject "a boolean podLabel value" --set registry.host=harbor.example.com --set podLabels.debug=true
+        reject "a numeric podLabel value" --set registry.host=harbor.example.com --set podLabels.rev=3
+        reject "a boolean podAnnotation value" --set registry.host=harbor.example.com --set podAnnotations.debug=true
+        reject "a boolean serviceAccount annotation value" --set registry.host=harbor.example.com --set serviceAccount.annotations.debug=true
+        reject "a boolean nodeSelector value" --set registry.host=harbor.example.com --set nodeSelector.spot=true
+        reject "a boolean extraEnv value" --set registry.host=harbor.example.com --set extraEnv[0].name=PRESERVE_ECR_PROVIDER --set extraEnv[0].value=false
+        echo "values.schema.json rejects every case above"
+
+        # The constraints above must not have moved the supported values out of
+        # range, so re-check the ones a reject case brushes against.
+        accept() {
+          desc=$1; shift
+          helm template {{.CHART}} {{.CHART_DIR}}/ "$@" >/dev/null || {
+            echo "ERROR: schema rejected $desc"; exit 1
+          }
+          echo "accepted: $desc"
+        }
+        accept "the default values" --set registry.host=harbor.example.com
+        accept "a dotfile binaryName" --set registry.host=harbor.example.com --set credentialProvider.binaryName=.harbor-provider
+        accept "an installedMarker somewhere else on persistent storage" --set registry.host=harbor.example.com --set installer.installedMarker=/var/opt/cph/marker
+        accept "the documented one-node-at-a-time update strategy" --set registry.host=harbor.example.com --set updateStrategy.type=RollingUpdate --set updateStrategy.rollingUpdate.maxUnavailable=1
+        accept "string podLabels, podAnnotations and nodeSelector" --set registry.host=harbor.example.com --set podLabels.team=platform --set podAnnotations.owner=platform --set nodeSelector.spot=true --set-string nodeSelector.spot=true
+        accept "a quoted extraEnv value" --set registry.host=harbor.example.com --set extraEnv[0].name=PRESERVE_ECR_PROVIDER --set-string extraEnv[0].value=false
+        accept "a marker directly under a top-level directory" --set registry.host=harbor.example.com --set installer.installedMarker=/cph-marker
+        accept "an explicit systemd drop-in path" --set registry.host=harbor.example.com --set kubelet.systemdDropInPath=/etc/systemd/system/kubelet.service.d/50-cph.conf
+        echo "values.schema.json accepts every case above"
 
   release-assets:
     desc: Build the release binaries and checksums into dist/
@@ -201,6 +397,7 @@ tasks:
       - task: version-check
       - task: helm-lint
       - task: helm-template
+      - task: helm-schema-check
 
   spellcheck:
     desc: Run spell checker (mirrors CI)

@@ -13,12 +13,48 @@ The selected profile controls default host paths:
   k3s/k3d:            /var/lib/rancher/credentialprovider/bin and /var/lib/rancher/credentialprovider/config.yaml
   kind:               /var/lib/kubelet/credential-provider and /var/lib/kubelet/credential-provider-config.yaml
 
-To check the status of the deployer:
+
+{{ if .Values.readinessProbe.enabled -}}
+{{ if .Values.kubelet.restart -}}
+A pod turns ready once its node has finished this revision's install,
+kubelet restart included, so rollout status tells you when every node is done:
+{{ else -}}
+A pod turns ready once its node has finished this revision's install.
+Kubelet restart is off, so ready means the files are in place on the node,
+not that kubelet has picked them up:
+{{ end }}
+  kubectl rollout status daemonset/{{ include "credential-provider-harbor.fullname" . }} -n {{ include "credential-provider-harbor.namespace" . }}
+{{ else -}}
+The readiness probe is disabled, so pod readiness says nothing about whether a
+node finished installing. Read the logs instead.
+{{ end }}
+{{- if and .Release.IsInstall .Values.kubelet.restart }}
+IMPORTANT: this is a first install. The DaemonSet controller puts an installer
+pod on every eligible node at once, and maxUnavailable bounds updates, not
+creation, so nothing serializes the kubelet restarts this time round. Running
+containers survive a kubelet restart, but the nodes do go NotReady together for
+a few seconds. See "First Install" in the chart README for the two ways around
+it: install with --set kubelet.restart=false and switch it on as a second
+upgrade, or install onto labelled batches of nodes with --set nodeSelector.
+{{ end }}
+
+To look at the deployer:
 
   kubectl get daemonset {{ include "credential-provider-harbor.fullname" . }} -n {{ include "credential-provider-harbor.namespace" . }}
   kubectl logs -l app.kubernetes.io/name={{ include "credential-provider-harbor.name" . }} -n {{ include "credential-provider-harbor.namespace" . }}
 
-{{- if not .Values.kubelet.configure }}
+{{- if and (not .Values.kubelet.configure) (has .Values.profile (list "eks" "aws")) }}
+
+Kubelet configuration is off, which is correct for this profile on nodes running
+the EKS-optimized AL2023 AMI: its kubelet already starts with the credential
+provider flags pointing at /etc/eks/image-credential-provider. Bottlerocket, a
+custom or self-managed AMI, and nodes outside EKS do not set those flags.
+Confirm they are present before testing pulls:
+
+  --image-credential-provider-bin-dir=/etc/eks/image-credential-provider
+  --image-credential-provider-config=/etc/eks/image-credential-provider/config.json
+
+{{- else if not .Values.kubelet.configure }}
 
 IMPORTANT: Kubelet configuration is disabled. You must configure the kubelet
 on each node to use the installed credential provider paths for your profile:
@@ -28,7 +64,9 @@ on each node to use the installed credential provider paths for your profile:
 
 {{- else if not .Values.kubelet.restart }}
 
-IMPORTANT: Kubelet restart is disabled. Restart or roll nodes before testing image pulls.
+IMPORTANT: Kubelet restart is disabled. Restart or roll nodes before testing
+image pulls, or upgrade with --set kubelet.restart=true, which rolls the restart
+out one node at a time.
 
 {{- end }}
 
