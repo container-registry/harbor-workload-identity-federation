@@ -1,0 +1,61 @@
+name: Release Please
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      # The root package (path ".") gets unprefixed outputs. Only a package in
+      # a subdirectory is prefixed with "<path>--".
+      app_released: ${{ steps.release.outputs.release_created }}
+      app_tag: ${{ steps.release.outputs.tag_name }}
+      chart_released: ${{ steps.release.outputs['deploy/helm/credential-provider-harbor--release_created'] }}
+      chart_tag: ${{ steps.release.outputs['deploy/helm/credential-provider-harbor--tag_name'] }}
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  binaries:
+    needs: [release-please]
+    if: ${{ needs.release-please.outputs.app_released == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-assets.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.app_tag }}
+
+  image:
+    needs: [release-please]
+    if: ${{ needs.release-please.outputs.app_released == 'true' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-image.yml
+    with:
+      ref: ${{ needs.release-please.outputs.app_tag }}
+      version: ${{ needs.release-please.outputs.app_tag }}
+      latest: true
+    secrets: inherit
+
+  chart:
+    needs: [release-please, image]
+    if: ${{ always() && needs.release-please.outputs.chart_released == 'true' && contains(fromJSON('["success", "skipped"]'), needs.image.result) }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-chart.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.chart_tag }}
+    secrets: inherit

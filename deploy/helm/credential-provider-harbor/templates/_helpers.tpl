@@ -79,3 +79,20 @@ Node audience RBAC resource name.
 {{- define "credential-provider-harbor.nodeAudienceRoleName" -}}
 {{- default (printf "%s-node-audience-token" (include "credential-provider-harbor.fullname" .)) .Values.nodeAudienceRbac.name | trunc 63 | trimSuffix "-" }}
 {{- end }}
+
+{{/*
+Image tag. Releases publish the deployer image as vX.Y.Z, while Chart.AppVersion
+is a bare SemVer, so the default needs the prefix back or the pull 404s.
+
+appVersion belongs to the binary train alone. The chart train releases through
+release-please's helm strategy, whose ChartYaml updater writes `version` and
+nothing else, so a chart-only release cannot move this tag to an image that was
+never built. `task version-check` asserts that invariant on every CI run.
+*/}}
+{{- define "credential-provider-harbor.imageTag" -}}
+{{- if .Values.image.tag }}
+{{- .Values.image.tag }}
+{{- else }}
+{{- printf "v%s" (.Chart.AppVersion | required "Chart.appVersion is empty, so the deployer image tag cannot be resolved. Set image.tag explicitly.") }}
+{{- end }}
+{{- end }}

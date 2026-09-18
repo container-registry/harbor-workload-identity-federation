@@ -1,0 +1,15 @@
+# Keep `task lint` and the CI lint job on the same rules.
+# The action pins the golangci-lint version; this pins the configuration.
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+formatters:
+  enable:
+    - gofmt

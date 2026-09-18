@@ -1,0 +1,108 @@
+name: Release Assets
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Existing GitHub Release tag to upload binaries to
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing GitHub Release tag to upload binaries to
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      # Runs before the checkout, because everything after it builds and
+      # uploads code that comes from the named ref. An unqualified ref lets a
+      # branch of the same name win over the tag, so the tag is checked here
+      # and checked out as refs/tags/<tag> below.
+      - name: Validate the release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          set -eu
+
+          # Exactly v<digits>.<digits>.<digits>. Glob character classes match
+          # newlines too, so a multi-line value cannot slip a second line past
+          # the check the way an unanchored grep would allow.
+          is_release_tag() { # <value>
+            case "$1" in
+              v*) rest=${1#v} ;;
+              *) return 1 ;;
+            esac
+            major=${rest%%.*}
+            tail=${rest#*.}
+            minor=${tail%%.*}
+            patch=${tail#*.}
+            [ "$major.$minor.$patch" = "$rest" ] || return 1
+            for part in "$major" "$minor" "$patch"; do
+              case "$part" in
+                '' | *[!0-9]*) return 1 ;;
+              esac
+            done
+          }
+
+          if ! is_release_tag "$TAG_NAME"; then
+            echo "ERROR: refusing to build for '$TAG_NAME'; expected an exact release tag vX.Y.Z" >&2
+            exit 1
+          fi
+
+          # A tag on its own proves nothing: anyone with write access can push
+          # one. Require the published Release that release-please creates.
+          draft=$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' 2>/dev/null) || draft=""
+          if [ "$draft" != "false" ]; then
+            echo "ERROR: no published GitHub Release for tag '$TAG_NAME'." >&2
+            echo "  Release assets are only built for tags release-please has already released." >&2
+            exit 1
+          fi
+
+          # Resolve the tag to the commit it points at now, while the
+          # published Release has just been verified, and check that out
+          # below. A tag can be retargeted between this step and the
+          # checkout; a commit id cannot.
+          sha=$(gh api "repos/$GH_REPO/commits/$TAG_NAME" --jq '.sha')
+          case "$sha" in
+            *[!0-9a-f]* | '') echo "ERROR: could not resolve '$TAG_NAME' to a commit" >&2; exit 1 ;;
+          esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # The commit the tag resolved to, not the tag itself.
+          ref: ${{ steps.tag.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build release assets
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: task release-assets "VERSION=$TAG_NAME"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          files: dist/*
