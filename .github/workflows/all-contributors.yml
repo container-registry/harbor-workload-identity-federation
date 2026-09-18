@@ -1,0 +1,46 @@
+name: Contributors
+
+# The action regenerates the code-contributor table in CONTRIBUTORS.md from git
+# history. It is not the all-contributors bot: it does not read
+# `@all-contributors` comments, so non-code contributors are listed by hand.
+
+on:
+  push:
+    branches: [main]
+  # The table can go stale or its markers can get mangled, and there is no push
+  # to main that would rebuild it. The action writes nothing when the table
+  # already matches git history, so a manual run costs nothing.
+  workflow_dispatch:
+
+# The job commits a regenerated CONTRIBUTORS.md back to main. Two runs at once
+# would race, and the second push would be rejected as non-fast-forward.
+concurrency:
+  group: all-contributors-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  contributors:
+    runs-on: ubuntu-latest
+    # workflow_dispatch runs against whichever branch was selected, and the
+    # action commits to the ref it checked out. The table is only ever
+    # regenerated on main, so refuse any other ref rather than write to it.
+    if: github.ref == 'refs/heads/main'
+    # Scoped to the job that pushes the regenerated table, so nothing else in
+    # this workflow gets a write token.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Update contributors
+        uses: akhilmhdh/contributors-readme-action@f0ff0e512c85711c0a08d3c94775aa041ab1e628 # v2.3.2
+        with:
+          readme_path: CONTRIBUTORS.md
+          columns_per_row: 7
+          commit_message: "docs: update contributors"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

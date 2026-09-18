@@ -1,0 +1,24 @@
+name: Spell Check
+
+# No paths filter: the typos action scans the whole repository whatever
+# triggered it, so filtering the trigger only decides which pull requests get
+# spell checked at all.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  typos:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Check spelling
+        uses: crate-ci/typos@512fc24f32f44ab01972217aaaf3dc86ec234d53 # v1.50.2
+        with:
+          config: .typos.toml

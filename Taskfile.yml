@@ -20,6 +20,10 @@ vars:
   IMAGE_NAME: credential-provider-harbor-deployer
   CHART: credential-provider-harbor
 
+  # Tool versions, pinned so a local run behaves the way CI does.
+  TYPOS_VERSION: 1.50.2
+  GOLANGCI_LINT_VERSION: v2.13.2
+
 tasks:
   default:
     desc: Build the credential-provider-harbor binaries
@@ -129,4 +133,178 @@ tasks:
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -rf bin/
+      - rm -rf bin/ dist/
+
+  check:
+    desc: Run every CI check that does not need a cluster
+    cmds:
+      - task: spellcheck
+      - task: lint
+      - task: test
+      - task: build-all
+      - task: helm-lint
+      - task: helm-template
+
+  spellcheck:
+    desc: Run spell checker (mirrors CI)
+    cmds:
+      - typos --config .typos.toml
+
+  setup:
+    desc: Install the developer tools
+    deps: [install-tools]
+
+  install-tools:
+    desc: Install the pinned CLI tools the checks need
+    cmds:
+      - |
+        set -eu
+
+        if ! command -v go >/dev/null 2>&1; then
+          echo "ERROR: Go is required to install the developer tools. See CONTRIBUTING.md." >&2
+          exit 1
+        fi
+        bin_dir=$(go env GOBIN)
+        if [ -z "$bin_dir" ]; then
+          # GOPATH can hold several entries; go install writes into the bin
+          # directory of the first one, so "$GOPATH/bin" is wrong for a list.
+          gopath=$(go env GOPATH)
+          bin_dir="${gopath%%:*}/bin"
+        fi
+        mkdir -p "$bin_dir"
+        # go install writes into $bin_dir; the check at the end reports
+        # whether the calling shell can actually see that directory.
+        original_path="$PATH"
+        PATH="$bin_dir:$PATH"
+        export PATH
+
+        # Module version recorded in a Go-built binary; empty when unknown.
+        go_tool_version() {
+          bin=$(command -v "$1" 2>/dev/null) || return 0
+          go version -m "$bin" 2>/dev/null | awk '$1 == "mod" { print $3; exit }'
+        }
+
+        # Presence is not enough: an older binary drifts from what CI runs.
+        ensure_go_tool() { # <binary> <module> <pinned version>
+          have=$(go_tool_version "$1")
+          if [ "$have" = "$3" ]; then
+            echo "$1 $3 already installed"
+            return 0
+          fi
+          if [ -n "$have" ]; then
+            echo "$1 $have does not match the pinned $3, reinstalling"
+          fi
+          GOBIN="$bin_dir" go install "$2@$3"
+        }
+
+        # sha256 of each release archive for the pinned TYPOS_VERSION. A GitHub
+        # release asset can be replaced after the fact, so the download is
+        # checked against these before it runs as a developer tool. Regenerate
+        # when the pin moves:
+        #   curl -fsSL <asset-url> | sha256sum
+        typos_sha256() { # <arch>-<os>
+          case "$1" in
+            x86_64-unknown-linux-musl)  echo abcb3e257c7c2abeff4d903f7fe68071357637605bdb283ce2251f44bc70dc09 ;;
+            aarch64-unknown-linux-musl) echo 27c4b6d0ba6f37d120ce32117777d703fc9d57ba71f16e8bcde5b35c987cf9b8 ;;
+            x86_64-apple-darwin)        echo 7480a081e51d428d94f560ef8b855ae0decb7c35cc686925ed887c5f51b1ecf1 ;;
+            aarch64-apple-darwin)       echo 70d61e9d682034133f0aa56f5a02bae0de168495f3cce62a87054aa7186c1901 ;;
+            *) return 1 ;;
+          esac
+        }
+
+        sha256_of() { # <file>
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$1" | awk '{print $1}'
+          elif command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$1" | awk '{print $1}'
+          else
+            return 1
+          fi
+        }
+
+        install_typos() { # <pinned version>
+          case "$(uname -s)" in
+            Linux) target_os=unknown-linux-musl ;;
+            Darwin) target_os=apple-darwin ;;
+            *) target_os= ;;
+          esac
+          case "$(uname -m)" in
+            x86_64 | amd64) target_arch=x86_64 ;;
+            arm64 | aarch64) target_arch=aarch64 ;;
+            *) target_arch= ;;
+          esac
+          target="$target_arch-$target_os"
+          if [ -n "$target_os" ] && [ -n "$target_arch" ] && command -v curl >/dev/null 2>&1 && want_sha=$(typos_sha256 "$target"); then
+            url="https://github.com/crate-ci/typos/releases/download/v$1/typos-v$1-$target.tar.gz"
+            tmp=$(mktemp -d)
+            echo "Downloading $url"
+            # Saved to disk rather than piped into tar: a stream tar has already
+            # unpacked cannot be checked against a digest.
+            if curl -fsSL -o "$tmp/typos.tar.gz" "$url"; then
+              got_sha=$(sha256_of "$tmp/typos.tar.gz") || got_sha=""
+              if [ -z "$got_sha" ]; then
+                rm -rf "$tmp"
+                echo "ERROR: neither sha256sum nor shasum is available, so the typos download cannot be verified." >&2
+                echo "  Install one of them, or install typos yourself and rerun 'task setup'." >&2
+                return 1
+              fi
+              if [ "$got_sha" != "$want_sha" ]; then
+                rm -rf "$tmp"
+                echo "ERROR: checksum mismatch for $url" >&2
+                echo "  expected $want_sha" >&2
+                echo "  got      $got_sha" >&2
+                echo "  Nothing was installed. Update the digest in Taskfile.yml if the pin moved;" >&2
+                echo "  otherwise the release asset was replaced and should not be trusted." >&2
+                return 1
+              fi
+              if tar -xzf "$tmp/typos.tar.gz" -C "$tmp"; then
+                install -m 0755 "$tmp/typos" "$bin_dir/typos"
+                rm -rf "$tmp"
+                return 0
+              fi
+            fi
+            rm -rf "$tmp"
+          fi
+          if command -v cargo >/dev/null 2>&1; then
+            # --root keeps the build out of ~/.cargo/bin so every tool this
+            # task installs ends up in the one directory reported below.
+            tmp=$(mktemp -d)
+            if cargo install typos-cli --version "$1" --locked --root "$tmp"; then
+              install -m 0755 "$tmp/bin/typos" "$bin_dir/typos"
+              rm -rf "$tmp"
+              return 0
+            fi
+            rm -rf "$tmp"
+          fi
+          echo "ERROR: cannot install typos $1 on this machine." >&2
+          echo "  Install it from https://github.com/crate-ci/typos/releases or with cargo," >&2
+          echo "  then rerun 'task setup'." >&2
+          return 1
+        }
+
+        typos_want="{{.TYPOS_VERSION}}"
+        typos_have=$(typos --version 2>/dev/null | awk '{print $NF}') || typos_have=""
+        if [ "$typos_have" = "$typos_want" ]; then
+          echo "typos $typos_want already installed"
+        else
+          if [ -n "$typos_have" ]; then
+            echo "typos $typos_have does not match the pinned $typos_want, reinstalling"
+          fi
+          install_typos "$typos_want"
+        fi
+
+        ensure_go_tool golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint {{.GOLANGCI_LINT_VERSION}}
+
+        # The tools just landed in $bin_dir. If the shell running task cannot
+        # see that directory, stop here rather than let 'task check' fail later
+        # with command-not-found.
+        missing=""
+        for tool in typos golangci-lint; do
+          (PATH="$original_path"; command -v "$tool" >/dev/null 2>&1) || missing="$missing $tool"
+        done
+        if [ -n "$missing" ]; then
+          echo "ERROR: installed into $bin_dir, but your PATH does not reach:$missing" >&2
+          echo "  Add the Go bin directory to PATH, then rerun 'task setup':" >&2
+          echo "    export PATH=\"$bin_dir:\$PATH\"" >&2
+          exit 1
+        fi

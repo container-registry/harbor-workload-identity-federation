@@ -833,3 +833,13 @@ spec:
 ### GitLab CI
 - [GitLab OIDC Documentation](https://docs.gitlab.com/ci/yaml/#id_tokens)
 - [GitLab OIDC Token Claims](https://docs.gitlab.com/ci/secrets/id_token_authentication.html)
+
+---
+
+## Project
+
+- [Contributing](CONTRIBUTING.md) — development setup, commit conventions, DCO
+- [Support](SUPPORT.md) — where to ask questions and how to report a bug
+- [Security policy](SECURITY.md) — how to report a vulnerability privately
+- [Roadmap](ROADMAP.md) — what is planned and where it is tracked
+- [Code of Conduct](CODE_OF_CONDUCT.md)
