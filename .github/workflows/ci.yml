@@ -52,6 +52,9 @@ jobs:
       - name: Render Helm chart profiles
         run: task helm-template
 
+      - name: Check the chart values schema
+        run: task helm-schema-check
+
   image:
     needs: [check]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

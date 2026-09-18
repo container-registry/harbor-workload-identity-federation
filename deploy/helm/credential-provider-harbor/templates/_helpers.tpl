@@ -91,3 +91,10 @@ is a bare SemVer, so the default needs the prefix back or the pull 404s.
 {{- printf "v%s" .Chart.AppVersion }}
 {{- end }}
 {{- end }}
+
+{{/*
+Marker file as the installer container sees it: the host path under hostRoot.
+*/}}
+{{- define "credential-provider-harbor.markerPath" -}}
+{{- printf "%s%s" (.Values.installer.hostRoot | trimSuffix "/") .Values.installer.installedMarker }}
+{{- end }}

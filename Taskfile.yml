@@ -118,16 +118,49 @@ tasks:
   helm-lint:
     desc: Lint the Helm chart
     cmds:
-      - helm lint deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com
+      - helm lint {{.CHART_DIR}}/ --strict --set registry.host=harbor.example.com
 
   helm-template:
-    desc: Render the Helm chart for supported profiles
+    desc: Render the chart for every supported profile
     cmds:
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=generic >/dev/null
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=eks >/dev/null
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=k3s >/dev/null
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=kind >/dev/null
-      - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=gke >/dev/null
+      - for: [generic, eks, aws, k3s, k3d, kind, gke]
+        cmd: >-
+          helm template {{.CHART}} {{.CHART_DIR}}/
+          --set registry.host=harbor.example.com
+          --set profile={{.ITEM}} >/dev/null
+      - >-
+        helm template {{.CHART}} {{.CHART_DIR}}/
+        --set registry.host=harbor.example.com
+        --set profile=custom
+        --set credentialProvider.binDir=/opt/credential-providers
+        --set credentialProvider.configPath=/etc/credential-providers/config.yaml >/dev/null
+
+  helm-schema-check:
+    desc: Check that values.schema.json rejects the mistakes it is meant to
+    cmds:
+      - |
+        # A render can fail for reasons that have nothing to do with the
+        # schema, which would make every case below look like a pass.
+        reject() {
+          desc=$1; shift
+          out=$(helm template {{.CHART}} {{.CHART_DIR}}/ "$@" 2>&1) && {
+            echo "ERROR: schema accepted $desc"; exit 1
+          }
+          case "$out" in
+            *"don't meet the specifications of the schema"*) ;;
+            *) echo "ERROR: $desc failed for another reason, not the schema:"; echo "$out"; exit 1 ;;
+          esac
+          echo "rejected: $desc"
+        }
+        reject "an empty registry.host"
+        reject "an unknown profile" --set registry.host=harbor.example.com --set profile=openshift
+        reject "profile=custom without host paths" --set registry.host=harbor.example.com --set profile=custom
+        reject "a bad cacheDuration" --set registry.host=harbor.example.com --set registry.cacheDuration=1hour
+        reject "a relative hostRoot" --set registry.host=harbor.example.com --set installer.hostRoot=host
+        reject "a relative binDir" --set registry.host=harbor.example.com --set credentialProvider.binDir=opt/providers
+        reject "a relative configPath" --set registry.host=harbor.example.com --set credentialProvider.configPath=etc/config.yaml
+        reject "a binaryName with a path in it" --set registry.host=harbor.example.com --set credentialProvider.binaryName=../credential-provider-harbor
+        echo "values.schema.json rejects every case above"
 
   release-assets:
     desc: Build the release binaries and checksums into dist/
@@ -168,6 +201,7 @@ tasks:
       - task: build-all
       - task: helm-lint
       - task: helm-template
+      - task: helm-schema-check
 
   spellcheck:
     desc: Run spell checker (mirrors CI)
