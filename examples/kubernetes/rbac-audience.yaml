@@ -5,11 +5,11 @@ kind: ClusterRole
 metadata:
   name: node-harbor-audience-token
 rules:
-  # Allow requesting tokens with the macfly4200.8gears.ch audience
+  # Allow requesting tokens with the harbor.example.com audience
   # for any service account (resourceNames: ["*"] = any SA)
   - verbs: ["request-serviceaccounts-token-audience"]
     apiGroups: [""]
-    resources: ["macfly4200.8gears.ch"]
+    resources: ["harbor.example.com"]
 ---
 # Bind this ClusterRole to the system:nodes group so all kubelets can use it
 apiVersion: rbac.authorization.k8s.io/v1

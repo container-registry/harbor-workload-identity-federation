@@ -9,6 +9,7 @@ extend-ignore-identifiers-re = [
 
 [default.extend-words]
 # Project terms that look like typos
+aks = "aks"
 fedidp = "fedidp"
 iat = "iat"
 aud = "aud"

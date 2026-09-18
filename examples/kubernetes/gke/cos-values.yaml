@@ -1,0 +1,23 @@
+# GKE Standard, Container-Optimized OS node images ONLY.
+#
+# In a cluster with both node images, add
+#   --set nodeSelector."cloud\.google\.com/gke-os-distribution"=cos
+#
+# COS mounts /usr read-only and noexec. /home/kubernetes/bin sits on the
+# stateful partition and is executable, which is where GKE itself puts node
+# binaries, so the provider goes there instead.
+
+profile: custom
+
+credentialProvider:
+  binDir: /home/kubernetes/bin/credential-providers
+  configPath: /etc/kubernetes/credential-providers/config.yaml
+  configFormat: yaml
+
+registry:
+  host: harbor.example.com
+  audience: harbor.example.com
+
+kubelet:
+  configure: true
+  restart: true
