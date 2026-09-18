@@ -1,0 +1,16 @@
+# Azure Kubernetes Service.
+#
+# The chart installs the binary and the config. It cannot wire kubelet: the AKS
+# kubelet unit builds its command line from $KUBELET_FLAGS in
+# /etc/default/kubelet and never expands $KUBELET_EXTRA_ARGS, so the drop-in the
+# installer writes has no effect. See README.md for the node-side step.
+
+profile: generic
+
+registry:
+  host: harbor.example.com
+  audience: harbor.example.com
+
+kubelet:
+  configure: false
+  restart: false

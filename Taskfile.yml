@@ -135,6 +135,28 @@ tasks:
         --set credentialProvider.binDir=/opt/credential-providers
         --set credentialProvider.configPath=/etc/credential-providers/config.yaml >/dev/null
 
+  examples-check:
+    desc: Render every example values file against the chart
+    cmds:
+      - |
+        set -u
+        shopt -s nullglob 2>/dev/null || setopt null_glob 2>/dev/null || true
+        files=(examples/kubernetes/*/*values.yaml)
+        if [ ${#files[@]} -eq 0 ]; then
+          echo "ERROR: no example values files found under examples/kubernetes/"
+          exit 1
+        fi
+        status=0
+        for f in "${files[@]}"; do
+          if helm template {{.CHART}} {{.CHART_DIR}}/ -f "$f" >/dev/null; then
+            echo "ok: $f"
+          else
+            echo "ERROR: $f does not render against the chart"
+            status=1
+          fi
+        done
+        exit $status
+
   helm-schema-check:
     desc: Check that values.schema.json rejects the mistakes it is meant to
     cmds:
@@ -202,6 +224,7 @@ tasks:
       - task: helm-lint
       - task: helm-template
       - task: helm-schema-check
+      - task: examples-check
 
   spellcheck:
     desc: Run spell checker (mirrors CI)

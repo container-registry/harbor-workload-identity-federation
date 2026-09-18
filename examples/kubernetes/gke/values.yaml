@@ -1,0 +1,16 @@
+# GKE Standard, Ubuntu node images ONLY.
+#
+# Container-Optimized OS mounts /usr noexec, so the binary cannot live in
+# /usr/local/bin there. In a cluster with both node images, add
+#   --set nodeSelector."cloud\.google\.com/gke-os-distribution"=ubuntu
+# or this lands on COS nodes and breaks pulls there. See README.md.
+
+profile: generic
+
+registry:
+  host: harbor.example.com
+  audience: harbor.example.com
+
+kubelet:
+  configure: true
+  restart: true

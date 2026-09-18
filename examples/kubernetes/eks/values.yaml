@@ -1,0 +1,23 @@
+# Amazon EKS with AL2023 node images.
+#
+# The AMI already starts kubelet with the credential provider flags pointing at
+# /etc/eks/image-credential-provider, so the installer only merges its entry
+# into the existing config.json. It does not touch the kubelet unit.
+
+profile: eks
+
+registry:
+  host: harbor.example.com
+  audience: harbor.example.com
+
+kubelet:
+  # Nothing to configure: the flags are already on the kubelet command line.
+  configure: false
+  # Still needed, so kubelet re-reads config.json.
+  restart: true
+
+extraEnv:
+  # Keep the ECR provider entry that the AMI ships. Set to "false" only if this
+  # cluster pulls nothing from ECR, including the AWS add-on images.
+  - name: PRESERVE_ECR_PROVIDER
+    value: "true"

@@ -571,6 +571,8 @@ Here's an example of what a GitLab CI OIDC token looks like:
 
 This section describes how to set up a local k3s/k3d cluster with Kubernetes Image Credential Provider (KEP-4412) to pull images using Service Account tokens (Federated Robot Accounts).
 
+> For other distributions, [`examples/kubernetes/`](examples/kubernetes/) has a page each for kubeadm, EKS, GKE, AKS, k3s, k3d, kind, RKE2, MicroK8s, and OpenShift, covering where each one keeps its kubelet arguments. [`scripts/verify-node-install.sh`](scripts/verify-node-install.sh) checks whether a node is actually set up.
+
 ### How It Works
 
 In Kubernetes 1.34+, the kubelet can automatically request Service Account tokens with custom audiences for image credential providers. This eliminates the need for static image pull secrets:
@@ -666,7 +668,7 @@ options:
           - server:*
 ```
 
-See example files in [`examples/kubernetes/`](examples/kubernetes/).
+See example files in [`examples/kubernetes/`](examples/kubernetes/), and [`examples/kubernetes/k3d/`](examples/kubernetes/k3d/) for the k3d walkthrough.
 
 For kind clusters, also verify kubelet is started with the credential provider flags. If the live kubelet command line is missing `--image-credential-provider-bin-dir` and `--image-credential-provider-config` after install, enable the optional Helm setting `kubelet.forceExecStartOverride=true`. It resets kind kubelet `ExecStart` and appends the provider flags directly; leave it disabled unless `KUBELET_EXTRA_ARGS` is not reflected in the live process.
 

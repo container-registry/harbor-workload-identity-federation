@@ -8,8 +8,15 @@ This directory contains copy-paste starting points for Harbor Federated Robot Ac
 |-----------|---------|
 | [`github-actions`](github-actions/) | Push and pull images from GitHub Actions using GitHub OIDC tokens. |
 | [`gitlab-ci`](gitlab-ci/) | Push images from GitLab CI using GitLab `id_tokens`. |
-| [`kubernetes`](kubernetes/) | Install and test the kubelet credential provider for secretless Kubernetes image pulls. |
+| [`kubernetes`](kubernetes/) | Install and test the kubelet credential provider for secretless Kubernetes image pulls. Has a page per distribution: kubeadm, EKS, GKE, AKS, k3s, k3d, kind, RKE2, MicroK8s, OpenShift. |
 | [`talos`](talos/) | Install the kubelet credential provider on Talos Linux via the official `siderolabs/harbor-credential-provider` system extension for secretless image pulls. |
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| [`../scripts/verify-node-install.sh`](../scripts/verify-node-install.sh) | Check whether nodes are actually set up: the live kubelet flags first, then the files. Works on any distribution. |
+| [`kubernetes/aks/patch-kubelet-flags.sh`](kubernetes/aks/patch-kubelet-flags.sh) | Add the provider flags to an AKS node's `KUBELET_FLAGS` and restart kubelet. |
 
 ## Before You Start
 
