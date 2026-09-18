@@ -79,3 +79,15 @@ Node audience RBAC resource name.
 {{- define "credential-provider-harbor.nodeAudienceRoleName" -}}
 {{- default (printf "%s-node-audience-token" (include "credential-provider-harbor.fullname" .)) .Values.nodeAudienceRbac.name | trunc 63 | trimSuffix "-" }}
 {{- end }}
+
+{{/*
+Image tag. Releases publish the deployer image as vX.Y.Z, while Chart.AppVersion
+is a bare SemVer, so the default needs the prefix back or the pull 404s.
+*/}}
+{{- define "credential-provider-harbor.imageTag" -}}
+{{- if .Values.image.tag }}
+{{- .Values.image.tag }}
+{{- else }}
+{{- printf "v%s" .Chart.AppVersion }}
+{{- end }}
+{{- end }}

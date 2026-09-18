@@ -24,4 +24,4 @@ Near-term areas of work:
 
 ## Releases
 
-Published versions are listed under [GitHub Releases](https://github.com/container-registry/harbor-workload-identity-federation/releases).
+See [docs/RELEASES.md](docs/RELEASES.md) for how a release is cut, and [GitHub Releases](https://github.com/container-registry/harbor-workload-identity-federation/releases) for published versions.

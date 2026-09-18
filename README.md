@@ -237,36 +237,30 @@ REGISTRY_ADDRESS=8gears.container-registry.com PROJECT_NAME=8gcr task docker-pus
 # Package and push the Helm chart to OCI
 REGISTRY_ADDRESS=8gears.container-registry.com PROJECT_NAME=8gcr task helm-push
 
+# Build the release binaries and checksums into dist/
+task release-assets VERSION=v0.1.0
+
 # Run tests
 task test
 
 # Run linter
 task lint
+
+# Run every check CI runs except the ones that need a cluster
+task check
 ```
 
-### Release Configuration
+### Releases
 
-GitHub Actions publishes images and Helm charts to `REGISTRY_ADDRESS/PROJECT_NAME`. For example, with `REGISTRY_ADDRESS=8gears.container-registry.com` and `PROJECT_NAME=8gcr`, the deployer image is pushed to:
+Releases are cut by [release-please](https://github.com/googleapis/release-please) from conventional commits. The binaries and the deployer image share one version line (`vX.Y.Z`); the Helm chart has its own (`chart-vX.Y.Z`). [docs/RELEASES.md](docs/RELEASES.md) covers the process, the repository variables that decide where artifacts are published, and how to re-run a publish by hand.
+
+Each train publishes only its own artifacts, so with the defaults:
 
 ```text
-8gears.container-registry.com/8gcr/credential-provider-harbor-deployer
+a vX.Y.Z release        binaries for linux/amd64 and linux/arm64 on the GitHub Release
+                        8gears.container-registry.com/8gcr/credential-provider-harbor-deployer:vX.Y.Z
+a chart-vX.Y.Z release  oci://8gears.container-registry.com/8gcr/credential-provider-harbor:X.Y.Z
 ```
-
-Set these repository variables:
-
-```text
-REGISTRY_ADDRESS=8gears.container-registry.com
-PROJECT_NAME=8gcr
-REGISTRY_USERNAME=<robot-or-user-with-push-access>
-```
-
-Set this repository secret:
-
-```text
-REGISTRY_PASSWORD=<password-or-token>
-```
-
-The release workflow uploads Linux credential-provider and installer binaries to the GitHub release, pushes the multi-arch deployer image, and pushes the Helm chart as OCI to `oci://${REGISTRY_ADDRESS}/${PROJECT_NAME}/credential-provider-harbor`.
 
 ---
 
@@ -841,5 +835,6 @@ spec:
 - [Contributing](CONTRIBUTING.md) — development setup, commit conventions, DCO
 - [Support](SUPPORT.md) — where to ask questions and how to report a bug
 - [Security policy](SECURITY.md) — how to report a vulnerability privately
+- [Releases](docs/RELEASES.md) — how a release is cut and where artifacts are published
 - [Roadmap](ROADMAP.md) — what is planned and where it is tracked
 - [Code of Conduct](CODE_OF_CONDUCT.md)

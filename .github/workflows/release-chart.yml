@@ -1,0 +1,64 @@
+name: Release Chart
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Chart release tag, for example chart-v0.2.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Chart release tag, for example chart-v0.2.0
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS || '8gears.container-registry.com' }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME || '8gcr' }}
+  REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # Checked before the checkout: this job holds Helm registry credentials
+      # and runs a Taskfile from whatever ref it is given, so the ref has to be
+      # a chart release tag rather than an arbitrary branch.
+      - name: Validate the chart tag
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          set -eu
+          case "$TAG_NAME" in
+            chart-v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "ERROR: refusing to publish from ref '$TAG_NAME'; expected chart-vX.Y.Z"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.tag_name }}
+          persist-credentials: false
+
+      - uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+      - name: Log in to the Helm registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          printf '%s' "$REGISTRY_PASSWORD" \
+            | helm registry login "$REGISTRY_ADDRESS" --username "$REGISTRY_USERNAME" --password-stdin
+
+      - name: Package and push the chart
+        run: task helm-push

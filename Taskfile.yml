@@ -4,16 +4,19 @@ vars:
   APP: credential-provider-harbor
   INSTALLER: credential-provider-harbor-installer
   MODULE: github.com/container-registry/harbor-workload-identity-federation
-  VERSION:
+  CHART_DIR: deploy/helm/credential-provider-harbor
+  DIST: '{{default "dist" .DIST}}'
+  # Version of the binaries and the image. Overridable: task docker-push VERSION=v1.2.3
+  GIT_VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
-  CHART_VERSION:
-    sh: |
-      tag=$(git describe --tags --exact-match 2>/dev/null || true)
-      if [ -n "$tag" ]; then
-        printf '%s' "${tag#v}"
-      else
-        awk '/^version:/ {print $2}' deploy/helm/credential-provider-harbor/Chart.yaml
-      fi
+  VERSION: '{{default .GIT_VERSION .VERSION}}'
+  # Chart version and appVersion come from Chart.yaml, which release-please maintains.
+  CHART_VERSION_FILE:
+    sh: awk '/^version:/ {print $2; exit}' deploy/helm/credential-provider-harbor/Chart.yaml
+  CHART_APP_VERSION_FILE:
+    sh: awk '/^appVersion:/ {gsub(/"/, "", $2); print $2; exit}' deploy/helm/credential-provider-harbor/Chart.yaml
+  CHART_VERSION: '{{default .CHART_VERSION_FILE .CHART_VERSION}}'
+  CHART_APP_VERSION: '{{default .CHART_APP_VERSION_FILE .CHART_APP_VERSION}}'
   REGISTRY_ADDRESS: '{{default "8gears.container-registry.com" .REGISTRY_ADDRESS}}'
   PROJECT_NAME: '{{default "8gcr" .PROJECT_NAME}}'
   REGISTRY: '{{.REGISTRY_ADDRESS}}/{{.PROJECT_NAME}}'
@@ -98,19 +101,19 @@ tasks:
           --push .
 
   helm-package:
-    desc: Package the Helm chart
+    desc: Package the Helm chart into dist/
     cmds:
-      - mkdir -p dist
-      - helm package deploy/helm/{{.CHART}}/
-          --destination dist
+      - mkdir -p {{.DIST}}
+      - helm package {{.CHART_DIR}}/
+          --destination {{.DIST}}
           --version {{.CHART_VERSION}}
-          --app-version {{.VERSION}}
+          --app-version {{.CHART_APP_VERSION}}
 
   helm-push:
-    desc: Package and push the Helm chart as OCI
+    desc: Package and push the Helm chart as an OCI artifact
     deps: [helm-package]
     cmds:
-      - helm push dist/{{.CHART}}-{{.CHART_VERSION}}.tgz oci://{{.REGISTRY}}
+      - helm push {{.DIST}}/{{.CHART}}-{{.CHART_VERSION}}.tgz oci://{{.REGISTRY}}
 
   helm-lint:
     desc: Lint the Helm chart
@@ -126,10 +129,32 @@ tasks:
       - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=kind >/dev/null
       - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=gke >/dev/null
 
+  release-assets:
+    desc: Build the release binaries and checksums into dist/
+    cmds:
+      - rm -rf {{.DIST}} && mkdir -p {{.DIST}}
+      - task: _release-binary
+        vars: {BINARY: '{{.APP}}', PACKAGE: './cmd/{{.APP}}/'}
+      - task: _release-binary
+        vars: {BINARY: '{{.INSTALLER}}', PACKAGE: './cmd/{{.INSTALLER}}/'}
+      - cd {{.DIST}} && sha256sum credential-provider-* > SHA256SUMS
+
+  _release-binary:
+    internal: true
+    requires:
+      vars: [BINARY, PACKAGE]
+    cmds:
+      - for: [amd64, arm64]
+        cmd: >-
+          CGO_ENABLED=0 GOOS=linux GOARCH={{.ITEM}}
+          go build -trimpath -ldflags="-s -w -X main.version={{.VERSION}}"
+          -o {{.DIST}}/{{.BINARY}}-linux-{{.ITEM}}
+          {{.PACKAGE}}
+
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -rf bin/ dist/
+      - rm -rf bin/ {{.DIST}}
 
   check:
     desc: Run every CI check that does not need a cluster
