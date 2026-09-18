@@ -1,0 +1,77 @@
+# Configuration for typos spell checker
+# https://github.com/crate-ci/typos
+
+[default]
+extend-ignore-identifiers-re = [
+    # Base64 encoded data patterns
+    "[A-Za-z0-9+/]{20,}",
+]
+
+[default.extend-words]
+# Project terms that look like typos
+fedidp = "fedidp"
+iat = "iat"
+aud = "aud"
+jwks = "jwks"
+
+# Common tech abbreviations
+cfg = "cfg"
+ctx = "ctx"
+req = "req"
+resp = "resp"
+impl = "impl"
+init = "init"
+
+[files]
+extend-exclude = [
+    # ===========================================
+    # Permanently excluded (not human-written text)
+    # ===========================================
+
+    # Certificate and key files
+    "*.pem",
+    "*.crt",
+    "*.cer",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "*.csr",
+
+    # Generated files
+    "*.pb.go",
+    "*.generated.go",
+    "*_gen.go",
+    "CHANGELOG.md",
+    "CONTRIBUTORS.md",
+
+    # Vendor directories
+    "vendor/",
+    "node_modules/",
+
+    # Build artifacts
+    "dist/",
+    "build/",
+
+    # Lock files
+    "go.sum",
+    "package-lock.json",
+    "yarn.lock",
+    "Cargo.lock",
+
+    # Test fixtures and snapshots
+    "**/testdata/",
+    "**/__snapshots__/",
+
+    # Binary assets
+    "images/",
+]
+
+[type.md]
+extend-ignore-re = [
+    # URLs
+    "https?://[^\\s]+",
+    # Code blocks
+    "```[\\s\\S]*?```",
+    # Inline code
+    "`[^`]+`",
+]

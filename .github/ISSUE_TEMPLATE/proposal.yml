@@ -1,0 +1,121 @@
+name: Proposal
+description: Propose a significant architectural change or new capability
+title: "[Proposal]: "
+labels: ["proposal", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for significant changes that need design discussion before implementation.
+
+        For smaller feature requests, please use the Feature Request template instead.
+
+        Proposals are discussed in the issue before implementation starts.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A brief, one-paragraph summary of the proposal
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: |
+        Why is this change needed? What problems does it solve?
+        What is the expected outcome?
+    validations:
+      required: true
+
+  - type: textarea
+    id: design
+    attributes:
+      label: Design / Architecture
+      description: |
+        Describe your proposed solution in detail. Include:
+        - High-level architecture
+        - Component interactions
+        - Data flow diagrams (if applicable)
+        - API changes (if applicable)
+
+        Use Mermaid diagrams or link to external diagrams if helpful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Plan
+      description: |
+        How would this be implemented? Consider:
+        - Phases or milestones
+        - Dependencies on other work
+        - Estimated scope/effort
+        - Migration path for existing users
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches did you consider? Why was this approach chosen?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking Changes
+      description: Would this proposal introduce breaking changes?
+      options:
+        - "Yes - API breaking changes"
+        - "Yes - Database/schema changes"
+        - "Yes - Configuration changes"
+        - "No breaking changes"
+        - "Unknown / Needs investigation"
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Backward Compatibility
+      description: |
+        If there are breaking changes, how will backward compatibility be maintained?
+        What is the migration path for existing users?
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security Considerations
+      description: Are there any security implications of this proposal?
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing Strategy
+      description: How would this feature be tested?
+
+  - type: textarea
+    id: documentation
+    attributes:
+      label: Documentation Requirements
+      description: What documentation would need to be created or updated?
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: |
+        Links to related issues, discussions, external resources, or prior art
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched for similar proposals and this is not a duplicate
+          required: true
+        - label: I am willing to help implement this proposal

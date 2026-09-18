@@ -1,0 +1,83 @@
+# Configuration for actions/labeler
+# Maps file patterns to labels
+
+# Documentation changes
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '*.md'
+          - 'docs/**/*'
+
+# CI/CD changes
+component/ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**/*'
+          - 'Makefile'
+          - 'Taskfile.yml'
+
+# Dependencies
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'go.mod'
+          - 'go.sum'
+          - 'package.json'
+          - 'package-lock.json'
+          - 'requirements.txt'
+          - 'Cargo.toml'
+          - 'Cargo.lock'
+
+# Configuration changes
+component/config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '*.yml'
+          - '*.yaml'
+          - '*.json'
+          - '*.toml'
+          - '*.ini'
+
+# Tests
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*_test.go'
+          - '**/*.test.js'
+          - '**/*.test.ts'
+          - '**/*.spec.js'
+          - '**/*.spec.ts'
+          - 'tests/**/*'
+
+# Kubelet credential provider binary
+component/provider:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'cmd/credential-provider-harbor/**/*'
+
+# On-node installer
+component/installer:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'cmd/credential-provider-harbor-installer/**/*'
+          - 'scripts/**/*'
+          - 'Dockerfile'
+
+# Helm chart
+component/chart:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'deploy/helm/**/*'
+
+# Examples and distribution guides
+component/examples:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'examples/**/*'
+
+# Documentation
+component/docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**/*'
+          - '**/README.md'
