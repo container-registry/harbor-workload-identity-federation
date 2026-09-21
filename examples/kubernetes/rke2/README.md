@@ -37,13 +37,17 @@ The installer restarts `rke2-agent` on worker nodes and `rke2-server` on server 
 
 Read this one before installing. RKE2 reads `/etc/rancher/rke2/config.yaml` first and then `config.yaml.d/*.yaml` in alphabetical order, and for a repeated key the last file wins outright. It does not merge the two lists. So the installer's `99-credential-provider-harbor.yaml` sorts last, the credential provider flags do apply, and **any `kubelet-arg` entries of your own are replaced by them.**
 
-If you have none, there is nothing to do. If you have some, either add them to a drop-in that sorts after `99-`, or keep the installer out of it:
+If you have none, there is nothing to do.
+
+If you have some, the thing that does not work is putting them in a drop-in that sorts after `99-`. Under the same rule, that file replaces the installer's list and takes the two provider flags out with it, silently. Either list your entries *and* the two from [`config.yaml`](config.yaml) together in that later file, or write them there under `kubelet-arg+:`, which appends to the earlier value instead of replacing it.
+
+The third option is to keep the installer out of the kubelet arguments entirely:
 
 ```bash
 --set kubelet.configure=false
 ```
 
-and merge the two entries from [`config.yaml`](config.yaml) into your own `kubelet-arg` list by hand. RKE2 also accepts a `kubelet-arg+:` key, which appends to the value from the earlier file instead of replacing it; the installer does not use it, because a silently unrecognized key would be a worse failure than a visible one.
+and merge the two entries from [`config.yaml`](config.yaml) into your own list by hand. The installer itself writes plain `kubelet-arg:` rather than `kubelet-arg+:`, because a key an older parser does not recognize fails silently, and a visible replacement is the better of the two failures.
 
 Check what the supervisor actually got after the restart:
 
