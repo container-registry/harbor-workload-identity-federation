@@ -111,13 +111,13 @@
         },
         "binDir": {
           "type": "string",
-          "pattern": "^(/([^/]+/)*[^/]+)?$",
-          "description": "Absolute host path, or empty to take the profile default. / and a trailing slash are rejected: the installer writes the provider binary inside this directory, and rejects a relative path."
+          "pattern": "^(/[^/\\s\"'\\\\]+(/[^/\\s\"'\\\\]+)*)?$",
+          "description": "Absolute host path, or empty to take the profile default. The installer writes the provider binary inside this directory, so / and a trailing slash are rejected, as are whitespace, quotes and backslashes: the path is pasted verbatim into the kubelet argument files."
         },
         "configPath": {
           "type": "string",
-          "pattern": "^(/([^/]+/)*[^/]+)?$",
-          "description": "Absolute host path, or empty to take the profile default. It names the config file itself, so / and a trailing slash are rejected."
+          "pattern": "^(/[^/\\s\"'\\\\]+(/[^/\\s\"'\\\\]+)*)?$",
+          "description": "Absolute host path, or empty to take the profile default. It names the config file itself, so / and a trailing slash are rejected, as are whitespace, quotes and backslashes: the path is pasted verbatim into the kubelet argument files."
         },
         "configFormat": {
           "enum": [

@@ -1218,3 +1218,48 @@ func TestInstallRejectsARootMarkerBeforeTouchingTheHost(t *testing.T) {
 		t.Fatalf("install() wrote %d entries to the host root, want none", len(entries))
 	}
 }
+
+func TestValidateOptionsRejectsPathsThatBreakTheFilesTheyGoInto(t *testing.T) {
+	base := options{
+		HostRoot:        "/host",
+		SourceBinary:    "/usr/local/bin/credential-provider-harbor",
+		BinaryName:      providerName,
+		BinDir:          "/usr/local/bin/credential-providers",
+		ConfigPath:      "/etc/kubernetes/credential-providers/config.yaml",
+		ConfigFormat:    "yaml",
+		MatchImages:     []string{"harbor.example.com"},
+		InstalledMarker: "/var/run/credential-provider-harbor-installed",
+		InstallID:       standaloneInstallID,
+	}
+
+	if err := validateOptions(base); err != nil {
+		t.Fatalf("validateOptions() on ordinary paths: %v", err)
+	}
+
+	// Each of these ends up inside a systemd Environment= line, a kind
+	// ExecStart line, a YAML drop-in, the MicroK8s arguments file, or the AKS
+	// KUBELET_FLAGS assignment, and breaks at least one of them.
+	for _, path := range []string{
+		`/opt/a b/providers`,
+		"/opt/a\tb/providers",
+		`/opt/it's/providers`,
+		`/opt/say"hi/providers`,
+		`/opt/back\slash/providers`,
+		"/opt/new\nline/providers",
+	} {
+		t.Run("binDir "+path, func(t *testing.T) {
+			opts := base
+			opts.BinDir = path
+			if err := validateOptions(opts); err == nil {
+				t.Fatal("validateOptions() returned nil error, want an unsafe path error")
+			}
+		})
+		t.Run("configPath "+path, func(t *testing.T) {
+			opts := base
+			opts.ConfigPath = path
+			if err := validateOptions(opts); err == nil {
+				t.Fatal("validateOptions() returned nil error, want an unsafe path error")
+			}
+		})
+	}
+}

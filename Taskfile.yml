@@ -353,6 +353,8 @@ tasks:
         reject "a binaryName with a path in it" --set registry.host=harbor.example.com --set credentialProvider.binaryName=../credential-provider-harbor
         reject "a binaryName of ." --set registry.host=harbor.example.com --set credentialProvider.binaryName=.
         reject "a binaryName of .." --set registry.host=harbor.example.com --set credentialProvider.binaryName=..
+        reject "a binDir with a space in it" --set registry.host=harbor.example.com --set 'credentialProvider.binDir=/opt/a b'
+        reject "a configPath with a quote in it" --set registry.host=harbor.example.com --set 'credentialProvider.configPath=/etc/it"s/config.yaml'
         reject "a relative kubeletDefaultsPath" --set registry.host=harbor.example.com --set kubelet.kubeletDefaultsPath=etc/default/kubelet
         reject "a relative rke2ConfigDropInPath" --set registry.host=harbor.example.com --set kubelet.rke2ConfigDropInPath=etc/rancher/rke2/config.yaml.d/99.yaml
         reject "a relative microk8sArgsPath" --set registry.host=harbor.example.com --set kubelet.microk8sArgsPath=var/snap/microk8s/current/args/kubelet
