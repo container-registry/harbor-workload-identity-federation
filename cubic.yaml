@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://cubic.dev/schema/cubic-repository-config.schema.json
+#
+# cubic is the code reviewer for this repository.
+#
+# Nothing here restricts which branches are reviewed, and that is deliberate.
+# Pull requests are often stacked, each based on the branch below it rather
+# than on main, and cubic reviews those already: #13 through #16 and #18 all
+# target a feature branch and all carry cubic reviews. The schema has no key
+# that gates a review on the target branch. only_base_branches and
+# exclude_base_branches exist under reviews.auto_approve_rules and decide
+# whether an approval is submitted, not whether a review runs.
+version: 1
+reviews:
+  enabled: true
+  # Re-review each pushed commit and report only issues that are new. Stacked
+  # branches are rebased often, and a full re-report on every rebase buries
+  # the findings that actually changed.
+  incremental_commits: true
+  # A draft here means the change is not ready to be read yet.
+  check_drafts: false
