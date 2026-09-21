@@ -31,7 +31,7 @@ helm upgrade --install credential-provider-harbor \
 kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 ```
 
-The installer restarts `rke2-agent` on worker nodes and `rke2-server` on server nodes, picking whichever unit is installed. Override it with `--set kubelet.serviceName=...` if your nodes name it differently.
+The installer restarts `rke2-agent` on worker nodes and `rke2-server` on server nodes, picking whichever unit is installed. A node that has both units restarts both, since each runs a kubelet of its own and the one left alone would keep the flags it started with. Override it with `--set kubelet.serviceName=...` if your nodes name it differently.
 
 ## If You Already Set `kubelet-arg` Yourself
 
@@ -39,7 +39,10 @@ Read this one before installing. RKE2 reads `/etc/rancher/rke2/config.yaml` firs
 
 If you have none, there is nothing to do.
 
-If you have some, the thing that does not work is putting them in a drop-in that sorts after `99-`. Under the same rule, that file replaces the installer's list and takes the two provider flags out with it, silently. Either list your entries *and* the two from [`config.yaml`](config.yaml) together in that later file, or write them there under `kubelet-arg+:`, which appends to the earlier value instead of replacing it.
+If you have some, the thing that does not work is putting them in a drop-in that sorts after `99-`. Under the same rule, that file replaces the installer's list and takes the two provider flags out with it, silently. Two ways round it, and they are not equally good:
+
+- **`kubelet-arg+:` in the later file.** It appends to the earlier value rather than replacing it, so the installer keeps owning the two provider entries. Prefer this one.
+- **Both sets of entries listed together under `kubelet-arg:` in the later file.** This works, and it takes the provider flags out of the installer's hands. `99-credential-provider-harbor.yaml` is rewritten with the current `credentialProvider.binDir` on every run, but your later file still wins, so a reinstall with a different path leaves the cluster on the old one with no error. If you go this way, keep the copies in step.
 
 The third option is to keep the installer out of the kubelet arguments entirely:
 

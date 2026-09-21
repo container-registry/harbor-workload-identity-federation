@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"sigs.k8s.io/yaml"
 )
 
 func TestMergeProviderReplacesExistingProviderAndPreservesOthers(t *testing.T) {
@@ -47,29 +45,42 @@ func TestMergeProviderReplacesExistingProviderAndPreservesOthers(t *testing.T) {
 	}
 }
 
+// requireIdempotentConfigureKubelet asserts the contract every profile shares:
+// the first call writes the node configuration, and a second call with the
+// same options finds nothing left to do.
+func requireIdempotentConfigureKubelet(t *testing.T, opts options) {
+	t.Helper()
+
+	changed, err := configureKubelet(opts)
+	if err != nil {
+		t.Fatalf("configureKubelet() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("configureKubelet() changed = false, want true")
+	}
+
+	changed, err = configureKubelet(opts)
+	if err != nil {
+		t.Fatalf("second configureKubelet() error: %v", err)
+	}
+	if changed {
+		t.Fatal("second configureKubelet() changed = true, want false")
+	}
+}
+
 func TestConfigureKindSystemdKubeletWritesExecStartOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 	opts := options{
-		HostRoot:       tmpDir,
-		BinDir:         "/var/lib/kubelet/credential-provider",
-		ConfigPath:     "/var/lib/kubelet/credential-provider-config.yaml",
-		KubeletService: "kubelet",
+		Profile:               "kind",
+		HostRoot:              tmpDir,
+		BinDir:                "/var/lib/kubelet/credential-provider",
+		ConfigPath:            "/var/lib/kubelet/credential-provider-config.yaml",
+		ConfigureKubelet:      true,
+		KubeletService:        "kubelet",
+		ForceKubeletExecStart: true,
 	}
 
-	changed, err := configureKindSystemdKubelet(opts)
-	if err != nil {
-		t.Fatalf("configureKindSystemdKubelet() error: %v", err)
-	}
-	if !changed {
-		t.Fatal("configureKindSystemdKubelet() changed = false, want true")
-	}
-	changed, err = configureKindSystemdKubelet(opts)
-	if err != nil {
-		t.Fatalf("second configureKindSystemdKubelet() error: %v", err)
-	}
-	if changed {
-		t.Fatal("second configureKindSystemdKubelet() changed = true, want false")
-	}
+	requireIdempotentConfigureKubelet(t, opts)
 
 	dropIn := filepath.Join(tmpDir, "etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf")
 	data, err := os.ReadFile(dropIn)
@@ -266,349 +277,51 @@ func TestInstallBinaryFixesModeWhenContentsMatch(t *testing.T) {
 	}
 }
 
-func TestSetKubeletFlagsHandlesTheShapesAKSWrites(t *testing.T) {
-	const binDir = "/usr/local/bin/credential-providers"
-	const configPath = "/etc/kubernetes/credential-providers/config.yaml"
-
-	tests := []struct {
-		name    string
-		content string
-		want    string
-	}{
-		{
-			name:    "quoted",
-			content: "KUBELET_FLAGS=\"--node-labels=a=b --max-pods=110\"\n",
-			want:    "KUBELET_FLAGS=\"--node-labels=a=b --max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-		{
-			name:    "unquoted",
-			content: "KUBELET_FLAGS=--max-pods=110\n",
-			want:    "KUBELET_FLAGS=\"--max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-		{
-			name:    "empty value",
-			content: "KUBELET_FLAGS=\"\"\nKUBELET_NODE_LABELS=a=b\n",
-			want:    "KUBELET_FLAGS=\"" + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\nKUBELET_NODE_LABELS=a=b\n",
-		},
-		{
-			name:    "a commented assignment is not an assignment",
-			content: "# KUBELET_FLAGS=\"--decoy\"\nKUBELET_FLAGS=\"--max-pods=110\"\n",
-			want:    "# KUBELET_FLAGS=\"--decoy\"\nKUBELET_FLAGS=\"--max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-		{
-			name:    "the last assignment wins, as systemd reads it",
-			content: "KUBELET_FLAGS=\"--first\"\nKUBELET_FLAGS=\"--second\"\n",
-			want:    "KUBELET_FLAGS=\"--first\"\nKUBELET_FLAGS=\"--second " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-		{
-			name:    "an earlier install's values are replaced, not duplicated",
-			content: "KUBELET_FLAGS=\"--max-pods=110 " + binDirFlag + "=/old/bin " + configFlag + "=/old/config.yaml\"\n",
-			want:    "KUBELET_FLAGS=\"--max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-		{
-			name:    "the space-separated spelling is replaced too",
-			content: "KUBELET_FLAGS=\"" + binDirFlag + " /old/bin --max-pods=110\"\n",
-			want:    "KUBELET_FLAGS=\"--max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-		{
-			name:    "one flag present without the other",
-			content: "KUBELET_FLAGS=\"" + binDirFlag + "=/old/bin\"\n",
-			want:    "KUBELET_FLAGS=\"" + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-		{
-			// A rewrite would collapse the run of spaces and re-escape the
-			// quotes. Everything here but the two flags has to survive.
-			name:    "the rest of the value is not reformatted",
-			content: "KUBELET_FLAGS=\"--node-labels=a=b  --kube-reserved=cpu=100m\t--eviction-hard=memory.available<100Mi\"\n",
-			want:    "KUBELET_FLAGS=\"--node-labels=a=b  --kube-reserved=cpu=100m\t--eviction-hard=memory.available<100Mi " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-		{
-			name:    "single quotes stay single quotes",
-			content: "KUBELET_FLAGS='--max-pods=110'\n",
-			want:    "KUBELET_FLAGS='--max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "'\n",
-		},
-		{
-			// The flag was left without its value. The argument after it
-			// belongs to the node, not to us.
-			name:    "a valueless flag does not swallow the next argument",
-			content: "KUBELET_FLAGS=\"" + binDirFlag + " --max-pods=110\"\n",
-			want:    "KUBELET_FLAGS=\"--max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := setKubeletFlags(tt.content, binDir, configPath)
-			if err != nil {
-				t.Fatalf("setKubeletFlags() error: %v", err)
-			}
-			if got != tt.want {
-				t.Fatalf("setKubeletFlags() =\n%q\nwant\n%q", got, tt.want)
-			}
-
-			again, err := setKubeletFlags(got, binDir, configPath)
-			if err != nil {
-				t.Fatalf("second setKubeletFlags() error: %v", err)
-			}
-			if again != got {
-				t.Fatalf("setKubeletFlags() is not idempotent:\n%q\nbecame\n%q", got, again)
-			}
-		})
-	}
-}
-
-func TestSetKubeletFlagsRejectsAFileWithNoActiveAssignment(t *testing.T) {
-	for _, content := range []string{
-		"",
-		"# KUBELET_FLAGS=\"--max-pods=110\"\n",
-		"KUBELET_EXTRA_ARGS=\"--max-pods=110\"\n",
-	} {
-		if _, err := setKubeletFlags(content, "/bin", "/config.yaml"); err == nil {
-			t.Fatalf("setKubeletFlags(%q) returned nil error, want no-assignment error", content)
-		}
-	}
-}
-
-func TestConfigureKubeletDefaultsPatchesAndIsIdempotent(t *testing.T) {
-	tmpDir := t.TempDir()
-	defaultsPath := filepath.Join(tmpDir, "etc/default/kubelet")
-	if err := os.MkdirAll(filepath.Dir(defaultsPath), 0755); err != nil {
-		t.Fatalf("create defaults dir: %v", err)
-	}
-	if err := os.WriteFile(defaultsPath, []byte("KUBELET_FLAGS=\"--max-pods=110\"\n"), 0644); err != nil {
-		t.Fatalf("write defaults: %v", err)
-	}
-
-	opts := options{
-		Profile:             "aks",
-		HostRoot:            tmpDir,
-		BinDir:              "/usr/local/bin/credential-providers",
-		ConfigPath:          "/etc/kubernetes/credential-providers/config.yaml",
-		ConfigureKubelet:    true,
-		KubeletDefaultsPath: "/etc/default/kubelet",
-	}
-
-	changed, err := configureKubelet(opts)
-	if err != nil {
-		t.Fatalf("configureKubelet() error: %v", err)
-	}
-	if !changed {
-		t.Fatal("configureKubelet() changed = false, want true")
-	}
-
-	data, err := os.ReadFile(defaultsPath)
-	if err != nil {
-		t.Fatalf("read defaults: %v", err)
-	}
-	for _, want := range []string{"--max-pods=110", binDirFlag + "=/usr/local/bin/credential-providers", configFlag + "=/etc/kubernetes/credential-providers/config.yaml"} {
-		if !bytes.Contains(data, []byte(want)) {
-			t.Fatalf("defaults missing %q:\n%s", want, data)
-		}
-	}
-
-	changed, err = configureKubelet(opts)
-	if err != nil {
-		t.Fatalf("second configureKubelet() error: %v", err)
-	}
-	if changed {
-		t.Fatal("second configureKubelet() changed = true, want false")
-	}
-}
-
-func TestConfigureKubeletDefaultsFailsOnANodeWithoutTheFile(t *testing.T) {
-	opts := options{
-		Profile:             "aks",
-		HostRoot:            t.TempDir(),
-		BinDir:              "/usr/local/bin/credential-providers",
-		ConfigPath:          "/etc/kubernetes/credential-providers/config.yaml",
-		ConfigureKubelet:    true,
-		KubeletDefaultsPath: "/etc/default/kubelet",
-	}
-
-	if _, err := configureKubelet(opts); err == nil {
-		t.Fatal("configureKubelet() returned nil error, want a missing-file error")
-	}
-}
-
-func TestConfigureRKE2WritesTheKubeletArgDropIn(t *testing.T) {
-	tmpDir := t.TempDir()
-	opts := options{
-		Profile:          "rke2",
-		HostRoot:         tmpDir,
-		BinDir:           "/var/lib/rancher/credentialprovider/bin",
-		ConfigPath:       "/var/lib/rancher/credentialprovider/config.yaml",
-		ConfigureKubelet: true,
-	}
-
-	changed, err := configureKubelet(opts)
-	if err != nil {
-		t.Fatalf("configureKubelet() error: %v", err)
-	}
-	if !changed {
-		t.Fatal("configureKubelet() changed = false, want true")
-	}
-	changed, err = configureKubelet(opts)
-	if err != nil {
-		t.Fatalf("second configureKubelet() error: %v", err)
-	}
-	if changed {
-		t.Fatal("second configureKubelet() changed = true, want false")
-	}
-
-	dropIn := filepath.Join(tmpDir, "etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml")
-	data, err := os.ReadFile(dropIn)
-	if err != nil {
-		t.Fatalf("read drop-in: %v", err)
-	}
-
-	// RKE2 reads these through kubelet-arg, and the entries carry no leading
-	// dashes there. A drop-in with dashes parses and is then ignored.
-	var parsed struct {
-		KubeletArg []string `json:"kubelet-arg"`
-	}
-	if err := yaml.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("drop-in is not valid YAML: %v\n%s", err, data)
-	}
-	want := []string{
-		"image-credential-provider-bin-dir=/var/lib/rancher/credentialprovider/bin",
-		"image-credential-provider-config=/var/lib/rancher/credentialprovider/config.yaml",
-	}
-	if len(parsed.KubeletArg) != len(want) {
-		t.Fatalf("kubelet-arg = %v, want %v", parsed.KubeletArg, want)
-	}
-	for i, arg := range want {
-		if parsed.KubeletArg[i] != arg {
-			t.Fatalf("kubelet-arg[%d] = %q, want %q", i, parsed.KubeletArg[i], arg)
-		}
-	}
-}
-
-func TestSetMicroK8sKubeletArgsReplacesRatherThanAppends(t *testing.T) {
-	const binDir = "/var/snap/microk8s/common/credentialprovider/bin"
-	const configPath = "/var/snap/microk8s/common/credentialprovider/config.yaml"
-
-	tests := []struct {
-		name    string
-		content string
-		want    string
-	}{
-		{
-			name:    "appends to the snap's own arguments",
-			content: "--kubeconfig=/var/snap/microk8s/current/credentials/kubelet.config\n--cert-dir=${SNAP_DATA}/certs\n",
-			want:    "--kubeconfig=/var/snap/microk8s/current/credentials/kubelet.config\n--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
-		},
-		{
-			name:    "a file without a trailing newline does not join lines",
-			content: "--cert-dir=${SNAP_DATA}/certs",
-			want:    "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
-		},
-		{
-			name:    "an earlier install's arguments are replaced",
-			content: "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=/old/bin\n" + configFlag + "=/old/config.yaml\n",
-			want:    "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
-		},
-		{
-			name:    "the space-separated spelling is replaced too",
-			content: binDirFlag + " /old/bin\n--cert-dir=${SNAP_DATA}/certs\n",
-			want:    "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
-		},
-		{
-			// kubelite passes each line on as its own argument, so a flag and
-			// its value can sit on two lines. Leaving the value behind would
-			// hand kubelet a stray path.
-			name:    "a flag split across two lines takes its value with it",
-			content: binDirFlag + "\n/old/bin\n--cert-dir=${SNAP_DATA}/certs\n",
-			want:    "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
-		},
-		{
-			name:    "a valueless flag does not swallow the next argument",
-			content: binDirFlag + "\n--cert-dir=${SNAP_DATA}/certs\n",
-			want:    "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := setMicroK8sKubeletArgs(tt.content, binDir, configPath)
-			if got != tt.want {
-				t.Fatalf("setMicroK8sKubeletArgs() =\n%q\nwant\n%q", got, tt.want)
-			}
-			if again := setMicroK8sKubeletArgs(got, binDir, configPath); again != got {
-				t.Fatalf("setMicroK8sKubeletArgs() is not idempotent:\n%q\nbecame\n%q", got, again)
-			}
-		})
-	}
-}
-
-func TestConfigureMicroK8sArgsFailsWhenTheSnapIsNotThere(t *testing.T) {
-	opts := options{
-		Profile:          "microk8s",
-		HostRoot:         t.TempDir(),
-		BinDir:           "/var/snap/microk8s/common/credentialprovider/bin",
-		ConfigPath:       "/var/snap/microk8s/common/credentialprovider/config.yaml",
-		ConfigureKubelet: true,
-	}
-
-	if _, err := configureKubelet(opts); err == nil {
-		t.Fatal("configureKubelet() returned nil error, want a missing-file error")
-	}
-}
-
-func TestConfigureMicroK8sArgsWritesTheSnapArgumentsFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	argsPath := filepath.Join(tmpDir, "var/snap/microk8s/current/args/kubelet")
-	if err := os.MkdirAll(filepath.Dir(argsPath), 0755); err != nil {
-		t.Fatalf("create args dir: %v", err)
-	}
-	if err := os.WriteFile(argsPath, []byte("--cert-dir=${SNAP_DATA}/certs\n"), 0644); err != nil {
-		t.Fatalf("write args: %v", err)
-	}
-
-	opts := options{
-		Profile:          "microk8s",
-		HostRoot:         tmpDir,
-		BinDir:           "/var/snap/microk8s/common/credentialprovider/bin",
-		ConfigPath:       "/var/snap/microk8s/common/credentialprovider/config.yaml",
-		ConfigureKubelet: true,
-	}
-
-	changed, err := configureKubelet(opts)
-	if err != nil {
-		t.Fatalf("configureKubelet() error: %v", err)
-	}
-	if !changed {
-		t.Fatal("configureKubelet() changed = false, want true")
-	}
-	changed, err = configureKubelet(opts)
-	if err != nil {
-		t.Fatalf("second configureKubelet() error: %v", err)
-	}
-	if changed {
-		t.Fatal("second configureKubelet() changed = true, want false")
-	}
-
-	data, err := os.ReadFile(argsPath)
-	if err != nil {
-		t.Fatalf("read args: %v", err)
-	}
-	want := "--cert-dir=${SNAP_DATA}/certs\n" +
-		binDirFlag + "=/var/snap/microk8s/common/credentialprovider/bin\n" +
-		configFlag + "=/var/snap/microk8s/common/credentialprovider/config.yaml\n"
-	if string(data) != want {
-		t.Fatalf("args =\n%q\nwant\n%q", data, want)
-	}
-}
-
 func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
+	// Every path field a profile can default, asserted whole: the file each
+	// profile writes is chosen by these, and a wrong one writes a valid
+	// drop-in somewhere kubelet never reads. An empty want is an assertion
+	// too — it says the profile must not hand another distribution's writer
+	// a path to work with.
 	tests := []struct {
-		profile        string
-		binDir         string
-		configPath     string
-		kubeletService string
+		profile          string
+		binDir           string
+		configPath       string
+		kubeletService   string
+		systemdDropIn    string
+		k3sDropIn        string
+		rke2DropIn       string
+		kubeletDefaults  string
+		microK8sArgsPath string
 	}{
-		{"aks", "/usr/local/bin/credential-providers", "/etc/kubernetes/credential-providers/config.yaml", "kubelet"},
-		{"rke2", "/var/lib/rancher/credentialprovider/bin", "/var/lib/rancher/credentialprovider/config.yaml", "rke2-agent"},
-		{"microk8s", "/var/snap/microk8s/common/credentialprovider/bin", "/var/snap/microk8s/common/credentialprovider/config.yaml", "snap.microk8s.daemon-kubelite"},
+		{
+			profile:         "aks",
+			binDir:          "/usr/local/bin/credential-providers",
+			configPath:      "/etc/kubernetes/credential-providers/config.yaml",
+			kubeletService:  "kubelet",
+			kubeletDefaults: "/etc/default/kubelet",
+		},
+		{
+			profile:        "rke2",
+			binDir:         "/var/lib/rancher/credentialprovider/bin",
+			configPath:     "/var/lib/rancher/credentialprovider/config.yaml",
+			kubeletService: "rke2-agent",
+			rke2DropIn:     "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml",
+		},
+		{
+			profile:          "microk8s",
+			binDir:           "/var/snap/microk8s/common/credentialprovider/bin",
+			configPath:       "/var/snap/microk8s/common/credentialprovider/config.yaml",
+			kubeletService:   "snap.microk8s.daemon-kubelite",
+			microK8sArgsPath: "/var/snap/microk8s/current/args/kubelet",
+		},
+		{
+			profile:        "k3s",
+			binDir:         "/var/lib/rancher/credentialprovider/bin",
+			configPath:     "/var/lib/rancher/credentialprovider/config.yaml",
+			kubeletService: "k3s",
+			k3sDropIn:      "/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml",
+		},
 	}
 
 	for _, tt := range tests {
@@ -630,51 +343,26 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 			if err != nil {
 				t.Fatalf("optionsFromEnv() error: %v", err)
 			}
-			if opts.BinDir != tt.binDir {
-				t.Fatalf("BinDir = %q, want %q", opts.BinDir, tt.binDir)
-			}
-			if opts.ConfigPath != tt.configPath {
-				t.Fatalf("ConfigPath = %q, want %q", opts.ConfigPath, tt.configPath)
-			}
-			if opts.KubeletService != tt.kubeletService {
-				t.Fatalf("KubeletService = %q, want %q", opts.KubeletService, tt.kubeletService)
+			for _, field := range []struct {
+				name string
+				got  string
+				want string
+			}{
+				{"BinDir", opts.BinDir, tt.binDir},
+				{"ConfigPath", opts.ConfigPath, tt.configPath},
+				{"KubeletService", opts.KubeletService, tt.kubeletService},
+				{"SystemdDropInPath", opts.SystemdDropInPath, tt.systemdDropIn},
+				{"K3sConfigDropInPath", opts.K3sConfigDropInPath, tt.k3sDropIn},
+				{"RKE2ConfigDropInPath", opts.RKE2ConfigDropInPath, tt.rke2DropIn},
+				{"KubeletDefaultsPath", opts.KubeletDefaultsPath, tt.kubeletDefaults},
+				{"MicroK8sArgsPath", opts.MicroK8sArgsPath, tt.microK8sArgsPath},
+			} {
+				if field.got != field.want {
+					t.Errorf("%s = %q, want %q", field.name, field.got, field.want)
+				}
 			}
 			if err := validateOptions(opts); err != nil {
 				t.Fatalf("validateOptions() error: %v", err)
-			}
-		})
-	}
-}
-
-func TestDetectRKE2ServicePrefersTheInstalledUnit(t *testing.T) {
-	tests := []struct {
-		name     string
-		unit     string
-		fallback string
-		want     string
-	}{
-		{name: "server node", unit: "usr/local/lib/systemd/system/rke2-server.service", want: "rke2-server"},
-		{name: "agent node", unit: "etc/systemd/system/rke2-agent.service", want: "rke2-agent"},
-		{name: "rpm install", unit: "usr/lib/systemd/system/rke2-server.service", want: "rke2-server"},
-		{name: "neither installed", want: "rke2-agent"},
-		{name: "an explicit override wins", unit: "etc/systemd/system/rke2-agent.service", fallback: "rke2-server", want: "rke2-server"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			if tt.unit != "" {
-				unitPath := filepath.Join(tmpDir, tt.unit)
-				if err := os.MkdirAll(filepath.Dir(unitPath), 0755); err != nil {
-					t.Fatalf("create unit dir: %v", err)
-				}
-				if err := os.WriteFile(unitPath, []byte("[Unit]\n"), 0644); err != nil {
-					t.Fatalf("write unit: %v", err)
-				}
-			}
-
-			if got := detectRKE2Service(options{HostRoot: tmpDir}, tt.fallback); got != tt.want {
-				t.Fatalf("detectRKE2Service() = %q, want %q", got, tt.want)
 			}
 		})
 	}

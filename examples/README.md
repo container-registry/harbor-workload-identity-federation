@@ -17,6 +17,8 @@ This directory contains copy-paste starting points for Harbor Federated Robot Ac
 |--------|---------|
 | [`../scripts/verify-node-install.sh`](../scripts/verify-node-install.sh) | Check whether nodes are actually set up: the live kubelet flags first, then the files. Works on any distribution. |
 
+AKS nodes used to need a per-node script to add the provider flags to `KUBELET_FLAGS`. The `aks` profile writes them now, on every node that joins; see [`kubernetes/aks`](kubernetes/aks/).
+
 ## Before You Start
 
 Create a Harbor Federated IDP for the workload issuer, then create a federated robot account with pull or push permissions for the target project.

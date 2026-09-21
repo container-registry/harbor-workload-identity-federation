@@ -55,6 +55,7 @@ cleanup_debug_pods() {
 # you run this. Without the retry a healthy node reads as having no kubelet.
 on_node() {
   local node=$1 script=$2 rc out attempt
+  shift 2
   for attempt in 1 2 3; do
     rc=0
     out=$(kubectl debug "node/${node}" \
@@ -62,7 +63,7 @@ on_node() {
       --profile=sysadmin \
       --namespace="${NAMESPACE}" \
       -q --attach=true \
-      -- chroot /host /bin/sh -c "${script}" 2>/dev/null) || rc=$?
+      -- chroot /host /bin/sh -c "${script}" verify-node-install "$@" 2>/dev/null) || rc=$?
     cleanup_debug_pods "${node}"
     # Empty is the only retryable answer, and it is retryable whatever the
     # exit status: a kubelet that is still restarting fails the attach both
@@ -74,144 +75,46 @@ on_node() {
   return "${rc}"
 }
 
-# kubelet is a separate process on most distributions, and embedded in the
-# rke2 and k3s supervisors or in microk8s kubelite on others. Matching on the
-# literal string "kubelet" with pgrep would also match this very snippet, whose
-# own command line contains it, so the shell's own PID is excluded explicitly.
-# shellcheck disable=SC2016  # this expands on the node, not here.
-KUBELET_CMDLINE_SNIPPET='
-self=$$
-for pid in $(ls /proc 2>/dev/null | grep "^[0-9]*$"); do
-  [ "$pid" = "$self" ] && continue
-  [ -r "/proc/$pid/cmdline" ] || continue
-  cmd=$(tr "\0" " " < "/proc/$pid/cmdline")
-  case "$cmd" in
-    */bin/sh\ -c*|*chroot\ /host*) continue ;;
-  esac
-  case "$cmd" in
-    */kubelet\ *|*/kubelet|*/kubelite\ *|*/rke2\ server*|*/rke2\ agent*|*/k3s\ server*|*/k3s\ agent*)
-      echo "$cmd"
-      exit 0
-      ;;
-  esac
-done
-echo NO_KUBELET_PROCESS
-'
+# The node-side programs live in scripts/lib/, one file each: a program that
+# is read, checked (shellcheck, sh -n) and reviewed on its own rather than as
+# a quoted string in the middle of this script. They are read here and handed
+# to the node through the debug pod.
+LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib"
 
-# k3s, RKE2 and MicroK8s keep the settings in a file rather than on a command
-# line, so an empty command line is not yet a failure on those.
-#
-# Those files spell a setting six different ways, and MicroK8s may even put a
-# flag and its value on two separate lines. Collecting the raw lines and
-# picking them apart here cannot work for that last one: by the time the lines
-# arrive, nothing says which of them belonged together. So the node normalizes
-# instead, and every setting it recognizes comes back as one "key=value" line
-# whatever it looked like in the file:
-#
-#   image-credential-provider-bin-dir: "/path"    k3s drop-in, as installed
-#   image-credential-provider-bin-dir: /path      k3s drop-in, hand written
-#   - "image-credential-provider-bin-dir=/path"   RKE2 kubelet-arg list item
-#   --image-credential-provider-bin-dir=/path     MicroK8s snap arguments
-#   --image-credential-provider-bin-dir /path     same, value as a second field
-#   --image-credential-provider-bin-dir           same, value on the next line
-#
-# A flag left without a value takes the next line as its value, but only if
-# that line can be one: an empty line, another flag or a comment leaves the
-# flag unset rather than being swallowed as its value. That is the reading
-# side of setMicroK8sKubeletArgs in the installer, which writes that file.
-#
-# CONFIG_SCAN_DONE is printed last. A node with none of these files is the
-# normal case, and finding nothing in them is a real answer. Without the
-# marker, that node and a debug pod that never attached both come back as an
-# empty string: on_node would read the first as the second and retry three
-# times on every node that is not one of these distributions, and check_node
-# would report a working node as broken.
-# shellcheck disable=SC2016  # this expands on the node, not here.
-CONFIG_DROPIN_SNIPPET='
-emit() {
-  if [ -z "$2" ]; then return 0; fi
-  case "$1" in
-    *image-credential-provider*) echo "$1=$2" ;;
-  esac
+node_program() {
+  local path="${LIB_DIR}/$1"
+  if [ ! -r "${path}" ]; then
+    red "cannot read ${path}"
+    echo "  Run this from a checkout: the node-side programs live in scripts/lib/."
+    exit 1
+  fi
+  cat "${path}"
 }
 
-# Sets TRIMMED to $1 without leading or trailing spaces. Tabs became spaces on
-# the way in, so spaces are the whole of it.
-trim() {
-  TRIMMED=$1
-  while :; do
-    case "$TRIMMED" in
-      " "*) TRIMMED=${TRIMMED# } ;;
-      *" ") TRIMMED=${TRIMMED% } ;;
-      *) break ;;
-    esac
-  done
-}
+# The words the node prints to say "nothing is running kubelet here" and "the
+# scan read every file it knows about". Both are defined here and passed to
+# the node, so the printing end and the reading end cannot drift apart.
+NO_KUBELET_MARKER="NO_KUBELET_PROCESS"
+CONFIG_SCAN_DONE_MARKER="CONFIG_SCAN_DONE"
 
-# Sets VALUE to what a flag is actually set to: a quoted value verbatim, an
-# unquoted one only up to the first space, so that a trailing comment or a
-# following field never ends up inside a path.
-value_of() {
-  VALUE=$1
-  case "$VALUE" in
-    \"*) VALUE=${VALUE#\"}; VALUE=${VALUE%%\"*} ;;
-    *) VALUE=${VALUE%% *} ;;
+KUBELET_CMDLINE_PROGRAM="$(node_program node-kubelet-cmdline.sh)"
+CONFIG_SCAN_PROGRAM="$(node_program node-kubelet-config-scan.sh)"
+
+# Runs the config scan on a node and prints what it found, sentinel removed.
+# k3s, RKE2 and MicroK8s keep these settings in a file rather than on a
+# command line, and every spelling of a setting comes back from the scan as
+# one quoted "key=value" line. Fails when the scan did not run to completion,
+# which is the only way to tell a node whose files hold nothing from a debug
+# pod that never attached.
+scan_node_kubelet_config() {
+  local node=$1 out
+  out=$(on_node "${node}" "${CONFIG_SCAN_PROGRAM}" "${CONFIG_SCAN_DONE_MARKER}") || out=""
+  case "${out}" in
+    *"${CONFIG_SCAN_DONE_MARKER}"*) ;;
+    *) return 1 ;;
   esac
+  printf '%s' "${out%"${CONFIG_SCAN_DONE_MARKER}"}"
 }
-
-for f in /etc/rancher/k3s/config.yaml /etc/rancher/k3s/config.yaml.d/*.yaml \
-         /etc/rancher/rke2/config.yaml /etc/rancher/rke2/config.yaml.d/*.yaml \
-         /var/snap/microk8s/current/args/kubelet; do
-  [ -f "$f" ] || continue
-  tr -d "\r" < "$f" | tr "\t" " " | {
-    pending=""
-    while IFS= read -r line || [ -n "$line" ]; do
-      trim "$line"; line=$TRIMMED
-
-      # A flag from the line before claims this line, unless this line is one
-      # of the three things that cannot be a value.
-      if [ -n "$pending" ]; then
-        case "$line" in
-          ""|-*|"#"*) pending="" ;;
-          *) value_of "$line"; emit "$pending" "$VALUE"; pending=""; continue ;;
-        esac
-      fi
-
-      case "$line" in
-        ""|"#"*) continue ;;
-      esac
-
-      # A YAML list item carries the whole "key=value" pair, quoted or not.
-      case "$line" in
-        --*) ;;
-        -*)
-          line=${line#-}
-          trim "$line"; line=$TRIMMED
-          case "$line" in
-            \"*\") line=${line#\"}; line=${line%\"} ;;
-          esac
-          ;;
-      esac
-
-      case "$line" in
-        --*)
-          line=${line#--}
-          case "$line" in
-            *=*) key=${line%%=*}; value_of "${line#*=}" ;;
-            *" "*) key=${line%% *}; trim "${line#* }"; value_of "$TRIMMED" ;;
-            *) pending=$line; continue ;;
-          esac
-          ;;
-        *:*) key=${line%%:*}; trim "${line#*:}"; value_of "$TRIMMED" ;;
-        *=*) key=${line%%=*}; value_of "${line#*=}" ;;
-        *) continue ;;
-      esac
-      emit "$key" "$VALUE"
-    done
-  }
-done
-echo CONFIG_SCAN_DONE
-'
 
 # Pulls one credential-provider setting out of whichever source we got it
 # from. Both sources arrive as a key and a value separated by "=" or ":": the
@@ -219,7 +122,7 @@ echo CONFIG_SCAN_DONE
 # node normalized them.
 #
 #   --image-credential-provider-bin-dir=/path      kubelet command line
-#   image-credential-provider-bin-dir=/path        from CONFIG_DROPIN_SNIPPET
+#   image-credential-provider-bin-dir="/path"      from the node-side scan
 #
 # One extractor for both, because a regex per source is what made the k3s case
 # report a working node as broken: the installer writes that value quoted, and
@@ -254,7 +157,7 @@ check_node() {
 
   echo "=== ${node} ==="
 
-  if ! cmdline=$(on_node "${node}" "${KUBELET_CMDLINE_SNIPPET}"); then
+  if ! cmdline=$(on_node "${node}" "${KUBELET_CMDLINE_PROGRAM}" "${NO_KUBELET_MARKER}"); then
     red "  could not reach the node (is kubectl debug allowed here?)"
     return 1
   fi
@@ -267,7 +170,7 @@ check_node() {
   fi
 
   case "${cmdline}" in
-    *NO_KUBELET_PROCESS*)
+    *"${NO_KUBELET_MARKER}"*)
       red "  no kubelet process found"
       echo "     Looked for kubelet, kubelite, and the rke2 and k3s supervisors."
       return 1
@@ -284,16 +187,12 @@ check_node() {
     # so they never show up in /proc. Absent from the command line is not yet a
     # failure on those.
     local fromconfig
-    fromconfig=$(on_node "${node}" "${CONFIG_DROPIN_SNIPPET}") || fromconfig=""
-    case "${fromconfig}" in
-      *CONFIG_SCAN_DONE*) ;;
-      *)
-        red "  could not read the kubelet argument files on the node"
-        echo "     The scan did not run to completion, so a node that is set up"
-        echo "     correctly would be reported as broken here."
-        return 1
-        ;;
-    esac
+    if ! fromconfig=$(scan_node_kubelet_config "${node}"); then
+      red "  could not read the kubelet argument files on the node"
+      echo "     The scan did not run to completion, so a node that is set up"
+      echo "     correctly would be reported as broken here."
+      return 1
+    fi
     bindir=$(extract_setting image-credential-provider-bin-dir "${fromconfig}")
     configpath=$(extract_setting image-credential-provider-config "${fromconfig}")
     source="a k3s, RKE2 or MicroK8s arguments file"
