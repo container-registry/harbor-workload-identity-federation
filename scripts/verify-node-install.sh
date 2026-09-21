@@ -54,8 +54,8 @@ cleanup_debug_pods() {
 # debug pod cannot start until kubelet is back, and an install is exactly when
 # you run this. Without the retry a healthy node reads as having no kubelet.
 on_node() {
-  local node=$1 script=$2 rc out
-  for _ in 1 2 3; do
+  local node=$1 script=$2 rc out attempt
+  for attempt in 1 2 3; do
     rc=0
     out=$(kubectl debug "node/${node}" \
       --image="${DEBUG_IMAGE}" \
@@ -64,8 +64,11 @@ on_node() {
       -q --attach=true \
       -- chroot /host /bin/sh -c "${script}" 2>/dev/null) || rc=$?
     cleanup_debug_pods "${node}"
-    [ "${rc}" -eq 0 ] && [ -z "${out}" ] || break
-    sleep 5
+    # Empty is the only retryable answer, and it is retryable whatever the
+    # exit status: a kubelet that is still restarting fails the attach both
+    # ways. Anything that produced output has answered.
+    [ -z "${out}" ] || break
+    [ "${attempt}" -eq 3 ] || sleep 5
   done
   printf '%s' "${out}"
   return "${rc}"
@@ -117,9 +120,12 @@ echo NO_KUBELET_PROCESS
 # flag unset rather than being swallowed as its value. That is the reading
 # side of setMicroK8sKubeletArgs in the installer, which writes that file.
 #
-# CONFIG_SCAN_DONE is printed last. Without it, the node that was scanned and
-# had nothing and the debug pod that never attached both come back as an empty
-# string, and the second one would be reported as a broken node.
+# CONFIG_SCAN_DONE is printed last. A node with none of these files is the
+# normal case, and finding nothing in them is a real answer. Without the
+# marker, that node and a debug pod that never attached both come back as an
+# empty string: on_node would read the first as the second and retry three
+# times on every node that is not one of these distributions, and check_node
+# would report a working node as broken.
 # shellcheck disable=SC2016  # this expands on the node, not here.
 CONFIG_DROPIN_SNIPPET='
 emit() {
