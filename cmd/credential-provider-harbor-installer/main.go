@@ -704,10 +704,11 @@ func configureKubeletDefaults(opts options) (bool, error) {
 	return changed, nil
 }
 
-// setKubeletFlags rewrites the KUBELET_FLAGS assignment so that it carries
-// exactly these two credential provider flags. Earlier values for them are
-// replaced rather than appended to, so changing binDir and reinstalling
-// converges instead of leaving a duplicate flag behind.
+// setKubeletFlags patches the KUBELET_FLAGS assignment so that it carries
+// these two credential provider flags and no earlier copy of them. Everything
+// else in the value survives byte for byte, quoting and whitespace included:
+// AKS writes this file itself, and re-serializing a value whose quoting we
+// guessed wrong would change the kubelet command line in ways nobody asked for.
 //
 // A commented-out assignment is not an assignment. Where there is more than
 // one active assignment the last one is patched, because that is the one
@@ -725,34 +726,86 @@ func setKubeletFlags(content, binDir, configPath string) (string, error) {
 	}
 
 	line := strings.TrimRight(lines[target], " \t\r")
-	key, value, _ := strings.Cut(line, "=")
-	value = unquote(strings.TrimSpace(value))
+	key, raw, _ := strings.Cut(line, "=")
+	raw = strings.TrimSpace(raw)
 
-	fields := strings.Fields(value)
-	fields = stripFlag(fields, binDirFlag)
-	fields = stripFlag(fields, configFlag)
-	fields = append(fields, binDirFlag+"="+binDir, configFlag+"="+configPath)
+	// Keep the quote character the node image chose. An unquoted value has to
+	// gain quotes, because what we append contains spaces, and an unquoted
+	// value with spaces breaks anything that sources the file as a shell.
+	quote := `"`
+	value := raw
+	if len(raw) >= 2 && (raw[0] == '"' || raw[0] == '\'') && raw[len(raw)-1] == raw[0] {
+		quote = string(raw[0])
+		value = raw[1 : len(raw)-1]
+	}
 
-	// Always quoted on the way out. An unquoted value with spaces is fine for
-	// systemd, and breaks anything that sources the file as a shell script.
-	lines[target] = fmt.Sprintf("%s=%q", key, strings.Join(fields, " "))
+	value = stripCredentialProviderFlags(value)
+	if value != "" {
+		value += " "
+	}
+	value += binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath
+
+	lines[target] = key + "=" + quote + value + quote
 	return strings.Join(lines, "\n"), nil
 }
 
-// stripFlag removes a flag from an argument list in both the --flag=value and
-// the --flag value spelling.
-func stripFlag(fields []string, flag string) []string {
-	kept := make([]string, 0, len(fields))
-	for i := 0; i < len(fields); i++ {
-		switch {
-		case fields[i] == flag:
-			i++ // and its value, which is the next field
-		case strings.HasPrefix(fields[i], flag+"="):
-		default:
-			kept = append(kept, fields[i])
+// stripCredentialProviderFlags removes the two credential provider flags from
+// an argument string, in both the --flag=value and the --flag value spelling,
+// and leaves every other byte where it was. Whitespace runs between the
+// arguments that remain are not collapsed, and nothing is re-quoted.
+func stripCredentialProviderFlags(value string) string {
+	var kept strings.Builder
+	i := 0
+	for i < len(value) {
+		sepStart := i
+		for i < len(value) && isArgSpace(value[i]) {
+			i++
+		}
+		separator := value[sepStart:i]
+
+		argStart := i
+		for i < len(value) && !isArgSpace(value[i]) {
+			i++
+		}
+		arg := value[argStart:i]
+		if arg == "" {
+			break
+		}
+
+		name, _, hasValue := strings.Cut(arg, "=")
+		if name != binDirFlag && name != configFlag {
+			kept.WriteString(separator)
+			kept.WriteString(arg)
+			continue
+		}
+
+		// The separator in front of a dropped flag goes with it. In the
+		// --flag value spelling the value goes too, but only when it is a
+		// value: a flag left without one must not eat the argument after it.
+		if !hasValue {
+			if next, end := peekArg(value, i); next != "" && !strings.HasPrefix(next, "-") {
+				i = end
+			}
 		}
 	}
-	return kept
+	return strings.TrimSpace(kept.String())
+}
+
+// peekArg returns the next whitespace-separated argument at or after i, and
+// the offset just past it.
+func peekArg(value string, i int) (string, int) {
+	for i < len(value) && isArgSpace(value[i]) {
+		i++
+	}
+	start := i
+	for i < len(value) && !isArgSpace(value[i]) {
+		i++
+	}
+	return value[start:i], i
+}
+
+func isArgSpace(c byte) bool {
+	return c == ' ' || c == '\t'
 }
 
 // configureMicroK8sArgs edits the snap's kubelet arguments file. MicroK8s runs
@@ -789,15 +842,26 @@ func configureMicroK8sArgs(opts options) (bool, error) {
 // setMicroK8sKubeletArgs drops any existing lines for the two credential
 // provider flags and appends the current ones. The file is one argument per
 // line; every other line keeps its place.
+//
+// A flag and its value may be split across two lines here, since kubelite
+// passes each line on as its own argument. Dropping only the flag line would
+// leave the old path behind as a stray positional argument, which kubelet then
+// reads as the value of whatever flag precedes it.
 func setMicroK8sKubeletArgs(content, binDir, configPath string) string {
-	kept := make([]string, 0)
-	for _, line := range strings.Split(content, "\n") {
-		field, _, _ := strings.Cut(strings.TrimSpace(line), " ")
-		field, _, _ = strings.Cut(field, "=")
-		if field == binDirFlag || field == configFlag {
+	lines := strings.Split(content, "\n")
+	kept := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); i++ {
+		field, _, hasValue := strings.Cut(strings.TrimSpace(lines[i]), " ")
+		field, _, hasInlineValue := strings.Cut(field, "=")
+		if field != binDirFlag && field != configFlag {
+			kept = append(kept, lines[i])
 			continue
 		}
-		kept = append(kept, line)
+		if !hasValue && !hasInlineValue && i+1 < len(lines) {
+			if next := strings.TrimSpace(lines[i+1]); next != "" && !strings.HasPrefix(next, "-") {
+				i++
+			}
+		}
 	}
 
 	// Trailing blank lines would push the appended arguments away from the
@@ -1228,19 +1292,6 @@ func configFormatForPath(path string) string {
 		return "json"
 	}
 	return "yaml"
-}
-
-// unquote strips one layer of matching surrounding quotes. AKS node images
-// have written KUBELET_FLAGS both quoted and unquoted over the years.
-func unquote(value string) string {
-	if len(value) < 2 {
-		return value
-	}
-	quote := value[0]
-	if (quote == '"' || quote == '\'') && value[len(value)-1] == quote {
-		return value[1 : len(value)-1]
-	}
-	return value
 }
 
 func fileExists(path string) bool {

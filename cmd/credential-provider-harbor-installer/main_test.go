@@ -315,6 +315,25 @@ func TestSetKubeletFlagsHandlesTheShapesAKSWrites(t *testing.T) {
 			content: "KUBELET_FLAGS=\"" + binDirFlag + "=/old/bin\"\n",
 			want:    "KUBELET_FLAGS=\"" + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
 		},
+		{
+			// A rewrite would collapse the run of spaces and re-escape the
+			// quotes. Everything here but the two flags has to survive.
+			name:    "the rest of the value is not reformatted",
+			content: "KUBELET_FLAGS=\"--node-labels=a=b  --kube-reserved=cpu=100m\t--eviction-hard=memory.available<100Mi\"\n",
+			want:    "KUBELET_FLAGS=\"--node-labels=a=b  --kube-reserved=cpu=100m\t--eviction-hard=memory.available<100Mi " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
+		},
+		{
+			name:    "single quotes stay single quotes",
+			content: "KUBELET_FLAGS='--max-pods=110'\n",
+			want:    "KUBELET_FLAGS='--max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "'\n",
+		},
+		{
+			// The flag was left without its value. The argument after it
+			// belongs to the node, not to us.
+			name:    "a valueless flag does not swallow the next argument",
+			content: "KUBELET_FLAGS=\"" + binDirFlag + " --max-pods=110\"\n",
+			want:    "KUBELET_FLAGS=\"--max-pods=110 " + binDirFlag + "=" + binDir + " " + configFlag + "=" + configPath + "\"\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -493,6 +512,19 @@ func TestSetMicroK8sKubeletArgsReplacesRatherThanAppends(t *testing.T) {
 			content: binDirFlag + " /old/bin\n--cert-dir=${SNAP_DATA}/certs\n",
 			want:    "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
 		},
+		{
+			// kubelite passes each line on as its own argument, so a flag and
+			// its value can sit on two lines. Leaving the value behind would
+			// hand kubelet a stray path.
+			name:    "a flag split across two lines takes its value with it",
+			content: binDirFlag + "\n/old/bin\n--cert-dir=${SNAP_DATA}/certs\n",
+			want:    "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
+		},
+		{
+			name:    "a valueless flag does not swallow the next argument",
+			content: binDirFlag + "\n--cert-dir=${SNAP_DATA}/certs\n",
+			want:    "--cert-dir=${SNAP_DATA}/certs\n" + binDirFlag + "=" + binDir + "\n" + configFlag + "=" + configPath + "\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -583,6 +615,16 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 		t.Run(tt.profile, func(t *testing.T) {
 			t.Setenv("PROFILE", tt.profile)
 			t.Setenv("REGISTRY_HOST", "harbor.example.com")
+			// env() treats empty as unset, so this asserts the profile
+			// defaults rather than whatever the shell running the tests
+			// happens to export.
+			for _, name := range []string{
+				"BIN_DIR", "CONFIG_PATH", "CONFIG_DIR", "CONFIG_FILE", "CONFIG_FORMAT",
+				"KUBELET_SERVICE", "KUBELET_DEFAULTS_PATH", "MICROK8S_KUBELET_ARGS_PATH",
+				"RKE2_CONFIG_DROP_IN_PATH", "K3S_CONFIG_DROP_IN_PATH", "SYSTEMD_DROP_IN_PATH",
+			} {
+				t.Setenv(name, "")
+			}
 
 			opts, err := optionsFromEnv()
 			if err != nil {
