@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit is switched off for this repository. Its free quota is
+# exhausted well before it reaches a review, so every pull request only ever
+# received "Review limit reached, next included review available in 59
+# minutes". cubic is the reviewer this repository relies on; see cubic.yaml.
+#
+# To turn CodeRabbit back on, set enabled to true. If stacked pull requests
+# are still in use at that point, base_branches also needs to list them,
+# because auto review otherwise covers the default branch alone.
+reviews:
+  auto_review:
+    enabled: false
