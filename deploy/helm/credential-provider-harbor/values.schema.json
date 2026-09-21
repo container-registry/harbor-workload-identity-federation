@@ -62,8 +62,11 @@
         "aws",
         "k3s",
         "k3d",
+        "rke2",
         "kind",
         "gke",
+        "aks",
+        "microk8s",
         "custom"
       ]
     },
@@ -168,6 +171,18 @@
         },
         "k3sConfigDropInPath": {
           "description": "Absolute host path to the k3s config drop-in file, or empty for the profile default. / and a trailing slash are rejected: it names a file.",
+          "type": "string",
+          "pattern": "^(/([^/]+/)*[^/]+)?$"
+        },
+        "rke2ConfigDropInPath": {
+          "type": "string",
+          "pattern": "^(/([^/]+/)*[^/]+)?$"
+        },
+        "kubeletDefaultsPath": {
+          "type": "string",
+          "pattern": "^(/([^/]+/)*[^/]+)?$"
+        },
+        "microk8sArgsPath": {
           "type": "string",
           "pattern": "^(/([^/]+/)*[^/]+)?$"
         }

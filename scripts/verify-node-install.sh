@@ -84,30 +84,136 @@ done
 echo NO_KUBELET_PROCESS
 '
 
-# k3s and RKE2 keep the settings here rather than on a command line.
+# k3s, RKE2 and MicroK8s keep the settings in a file rather than on a command
+# line, so an empty command line is not yet a failure on those.
+#
+# Those files spell a setting six different ways, and MicroK8s may even put a
+# flag and its value on two separate lines. Collecting the raw lines and
+# picking them apart here cannot work for that last one: by the time the lines
+# arrive, nothing says which of them belonged together. So the node normalizes
+# instead, and every setting it recognizes comes back as one "key=value" line
+# whatever it looked like in the file:
+#
+#   image-credential-provider-bin-dir: "/path"    k3s drop-in, as installed
+#   image-credential-provider-bin-dir: /path      k3s drop-in, hand written
+#   - "image-credential-provider-bin-dir=/path"   RKE2 kubelet-arg list item
+#   --image-credential-provider-bin-dir=/path     MicroK8s snap arguments
+#   --image-credential-provider-bin-dir /path     same, value as a second field
+#   --image-credential-provider-bin-dir           same, value on the next line
+#
+# A flag left without a value takes the next line as its value, but only if
+# that line can be one: an empty line, another flag or a comment leaves the
+# flag unset rather than being swallowed as its value. That is the reading
+# side of setMicroK8sKubeletArgs in the installer, which writes that file.
+#
+# CONFIG_SCAN_DONE is printed last. Without it, the node that was scanned and
+# had nothing and the debug pod that never attached both come back as an empty
+# string, and the second one would be reported as a broken node.
 # shellcheck disable=SC2016  # this expands on the node, not here.
 CONFIG_DROPIN_SNIPPET='
+emit() {
+  if [ -z "$2" ]; then return 0; fi
+  case "$1" in
+    *image-credential-provider*) echo "$1=$2" ;;
+  esac
+}
+
+# Sets TRIMMED to $1 without leading or trailing spaces. Tabs became spaces on
+# the way in, so spaces are the whole of it.
+trim() {
+  TRIMMED=$1
+  while :; do
+    case "$TRIMMED" in
+      " "*) TRIMMED=${TRIMMED# } ;;
+      *" ") TRIMMED=${TRIMMED% } ;;
+      *) break ;;
+    esac
+  done
+}
+
+# Sets VALUE to what a flag is actually set to: a quoted value verbatim, an
+# unquoted one only up to the first space, so that a trailing comment or a
+# following field never ends up inside a path.
+value_of() {
+  VALUE=$1
+  case "$VALUE" in
+    \"*) VALUE=${VALUE#\"}; VALUE=${VALUE%%\"*} ;;
+    *) VALUE=${VALUE%% *} ;;
+  esac
+}
+
 for f in /etc/rancher/k3s/config.yaml /etc/rancher/k3s/config.yaml.d/*.yaml \
-         /etc/rancher/rke2/config.yaml /etc/rancher/rke2/config.yaml.d/*.yaml; do
+         /etc/rancher/rke2/config.yaml /etc/rancher/rke2/config.yaml.d/*.yaml \
+         /var/snap/microk8s/current/args/kubelet; do
   [ -f "$f" ] || continue
-  grep -h "image-credential-provider" "$f" 2>/dev/null
+  tr -d "\r" < "$f" | tr "\t" " " | {
+    pending=""
+    while IFS= read -r line || [ -n "$line" ]; do
+      trim "$line"; line=$TRIMMED
+
+      # A flag from the line before claims this line, unless this line is one
+      # of the three things that cannot be a value.
+      if [ -n "$pending" ]; then
+        case "$line" in
+          ""|-*|"#"*) pending="" ;;
+          *) value_of "$line"; emit "$pending" "$VALUE"; pending=""; continue ;;
+        esac
+      fi
+
+      case "$line" in
+        ""|"#"*) continue ;;
+      esac
+
+      # A YAML list item carries the whole "key=value" pair, quoted or not.
+      case "$line" in
+        --*) ;;
+        -*)
+          line=${line#-}
+          trim "$line"; line=$TRIMMED
+          case "$line" in
+            \"*\") line=${line#\"}; line=${line%\"} ;;
+          esac
+          ;;
+      esac
+
+      case "$line" in
+        --*)
+          line=${line#--}
+          case "$line" in
+            *=*) key=${line%%=*}; value_of "${line#*=}" ;;
+            *" "*) key=${line%% *}; trim "${line#* }"; value_of "$TRIMMED" ;;
+            *) pending=$line; continue ;;
+          esac
+          ;;
+        *:*) key=${line%%:*}; trim "${line#*:}"; value_of "$TRIMMED" ;;
+        *=*) key=${line%%=*}; value_of "${line#*=}" ;;
+        *) continue ;;
+      esac
+      emit "$key" "$VALUE"
+    done
+  }
 done
+echo CONFIG_SCAN_DONE
 '
 
 # Pulls one credential-provider setting out of whichever source we got it
-# from. The sources spell the same setting four different ways, and keeping a
-# separate regex per source is what made the k3s case report a working node as
-# broken: the installer writes the value quoted, and an unquoted-only pattern
-# stopped at the opening quote and yielded nothing. One extractor, so the
-# command-line and config paths cannot drift apart again.
+# from. Both sources arrive as a key and a value separated by "=" or ":": the
+# kubelet command line as it is written there, and the config files as the
+# node normalized them.
 #
 #   --image-credential-provider-bin-dir=/path      kubelet command line
-#   image-credential-provider-bin-dir: "/path"     k3s drop-in, as installed
-#   image-credential-provider-bin-dir: /path       k3s drop-in, hand written
-#   - "image-credential-provider-bin-dir=/path"    RKE2 kubelet-arg
+#   image-credential-provider-bin-dir=/path        from CONFIG_DROPIN_SNIPPET
 #
-# The quoted form is tried first; the unquoted form stops at whitespace or at
-# a quote, so a trailing quote never ends up in the path.
+# One extractor for both, because a regex per source is what made the k3s case
+# report a working node as broken: the installer writes that value quoted, and
+# an unquoted-only pattern stopped at the opening quote and yielded nothing.
+# The quoted form is still tried first, so a value that reaches here quoted,
+# from a hand-written config or a quoted command line, reads the same way. The
+# unquoted form stops at whitespace or at a quote, so a trailing quote never
+# ends up in the path.
+#
+# The key has to be followed by its separator, which is what keeps a longer
+# flag that starts with the same characters from answering for it.
 #
 # Commented-out lines are dropped first. These files ship with commented
 # examples, and counting one as an active setting reports a node as configured
@@ -150,14 +256,23 @@ check_node() {
 
   local source="the kubelet command line"
   if [ -z "${bindir}" ] || [ -z "${configpath}" ]; then
-    # k3s and RKE2 pass these to their embedded kubelet from a config file, so
-    # they never show up in /proc. Absent from the command line is not yet a
+    # k3s, RKE2 and MicroK8s pass these to their embedded kubelet from a file,
+    # so they never show up in /proc. Absent from the command line is not yet a
     # failure on those.
     local fromconfig
     fromconfig=$(on_node "${node}" "${CONFIG_DROPIN_SNIPPET}") || fromconfig=""
+    case "${fromconfig}" in
+      *CONFIG_SCAN_DONE*) ;;
+      *)
+        red "  could not read the kubelet argument files on the node"
+        echo "     The scan did not run to completion, so a node that is set up"
+        echo "     correctly would be reported as broken here."
+        return 1
+        ;;
+    esac
     bindir=$(extract_setting image-credential-provider-bin-dir "${fromconfig}")
     configpath=$(extract_setting image-credential-provider-config "${fromconfig}")
-    source="a k3s or RKE2 config drop-in"
+    source="a k3s, RKE2 or MicroK8s arguments file"
   fi
 
   if [ -z "${bindir}" ] || [ -z "${configpath}" ]; then

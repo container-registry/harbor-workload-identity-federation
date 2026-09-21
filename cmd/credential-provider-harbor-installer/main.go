@@ -26,6 +26,9 @@ const (
 	configAPIVersion   = "kubelet.config.k8s.io/v1"
 	providerAPIVersion = "credentialprovider.kubelet.k8s.io/v1"
 
+	binDirFlag = "--image-credential-provider-bin-dir"
+	configFlag = "--image-credential-provider-config"
+
 	// markerInstallIDPrefix starts the first line of the marker file. The
 	// readiness probe greps for this prefix plus the install ID of the pod it
 	// runs in, so a marker left behind by a different revision cannot pass it.
@@ -72,6 +75,9 @@ type options struct {
 	KubeletService        string
 	SystemdDropInPath     string
 	K3sConfigDropInPath   string
+	RKE2ConfigDropInPath  string
+	KubeletDefaultsPath   string
+	MicroK8sArgsPath      string
 	PreserveECRProvider   bool
 	SleepForever          bool
 	InstalledMarker       string
@@ -79,13 +85,16 @@ type options struct {
 }
 
 type profileDefaults struct {
-	BinDir              string
-	ConfigPath          string
-	ConfigFormat        string
-	KubeletService      string
-	SystemdDropInPath   string
-	K3sConfigDropInPath string
-	PreserveECRProvider bool
+	BinDir               string
+	ConfigPath           string
+	ConfigFormat         string
+	KubeletService       string
+	SystemdDropInPath    string
+	K3sConfigDropInPath  string
+	RKE2ConfigDropInPath string
+	KubeletDefaultsPath  string
+	MicroK8sArgsPath     string
+	PreserveECRProvider  bool
 }
 
 type credentialProviderConfig struct {
@@ -212,6 +221,9 @@ func optionsFromEnv() (options, error) {
 		KubeletService:        env("KUBELET_SERVICE", defaults.KubeletService),
 		SystemdDropInPath:     env("SYSTEMD_DROP_IN_PATH", defaults.SystemdDropInPath),
 		K3sConfigDropInPath:   env("K3S_CONFIG_DROP_IN_PATH", defaults.K3sConfigDropInPath),
+		RKE2ConfigDropInPath:  env("RKE2_CONFIG_DROP_IN_PATH", defaults.RKE2ConfigDropInPath),
+		KubeletDefaultsPath:   env("KUBELET_DEFAULTS_PATH", defaults.KubeletDefaultsPath),
+		MicroK8sArgsPath:      env("MICROK8S_KUBELET_ARGS_PATH", defaults.MicroK8sArgsPath),
 		PreserveECRProvider:   preserveECR,
 		SleepForever:          boolEnv("SLEEP_FOREVER", false),
 		InstalledMarker:       env("INSTALLED_MARKER", defaultInstalledMarker),
@@ -244,12 +256,39 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 			KubeletService:      "k3s",
 			K3sConfigDropInPath: "/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml",
 		}, nil
+	case "rke2":
+		return profileDefaults{
+			BinDir:               "/var/lib/rancher/credentialprovider/bin",
+			ConfigPath:           "/var/lib/rancher/credentialprovider/config.yaml",
+			ConfigFormat:         "yaml",
+			KubeletService:       "rke2-agent",
+			RKE2ConfigDropInPath: "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml",
+		}, nil
 	case "kind":
 		return profileDefaults{
 			BinDir:         "/var/lib/kubelet/credential-provider",
 			ConfigPath:     "/var/lib/kubelet/credential-provider-config.yaml",
 			ConfigFormat:   "yaml",
 			KubeletService: "kubelet",
+		}, nil
+	case "aks":
+		return profileDefaults{
+			BinDir:              "/usr/local/bin/credential-providers",
+			ConfigPath:          "/etc/kubernetes/credential-providers/config.yaml",
+			ConfigFormat:        "yaml",
+			KubeletService:      "kubelet",
+			KubeletDefaultsPath: "/etc/default/kubelet",
+		}, nil
+	case "microk8s":
+		// The snap's writable tree, not /usr/local/bin: confinement keeps
+		// kubelite out of the latter, and /var/snap/microk8s/common survives
+		// a snap refresh while /var/snap/microk8s/current does not.
+		return profileDefaults{
+			BinDir:           "/var/snap/microk8s/common/credentialprovider/bin",
+			ConfigPath:       "/var/snap/microk8s/common/credentialprovider/config.yaml",
+			ConfigFormat:     "yaml",
+			KubeletService:   "snap.microk8s.daemon-kubelite",
+			MicroK8sArgsPath: "/var/snap/microk8s/current/args/kubelet",
 		}, nil
 	default:
 		return profileDefaults{}, fmt.Errorf("unsupported PROFILE %q", profile)
@@ -379,6 +418,19 @@ func validateOptions(opts options) error {
 			return fmt.Errorf("%s must name a path inside a parent directory, not %q", name, path)
 		}
 	}
+
+	optionalPaths := map[string]string{
+		"SYSTEMD_DROP_IN_PATH":       opts.SystemdDropInPath,
+		"K3S_CONFIG_DROP_IN_PATH":    opts.K3sConfigDropInPath,
+		"RKE2_CONFIG_DROP_IN_PATH":   opts.RKE2ConfigDropInPath,
+		"KUBELET_DEFAULTS_PATH":      opts.KubeletDefaultsPath,
+		"MICROK8S_KUBELET_ARGS_PATH": opts.MicroK8sArgsPath,
+	}
+	for name, path := range optionalPaths {
+		if path != "" && !filepath.IsAbs(path) {
+			return fmt.Errorf("%s must be an absolute path: %q", name, path)
+		}
+	}
 	// The readiness probe matches the marker's first line whole, so an install
 	// ID that spans lines would write a marker that can never satisfy it, and
 	// one padded with whitespace is a line no operator can read back reliably.
@@ -483,6 +535,12 @@ func configureKubelet(opts options) (bool, error) {
 		return false, nil
 	case "k3s", "k3d":
 		return configureK3s(opts)
+	case "rke2":
+		return configureRKE2(opts)
+	case "aks":
+		return configureKubeletDefaults(opts)
+	case "microk8s":
+		return configureMicroK8sArgs(opts)
 	case "kind":
 		if !opts.ForceKubeletExecStart {
 			return configureSystemdKubelet(opts)
@@ -581,6 +639,177 @@ image-credential-provider-config: %q
 	return changed, nil
 }
 
+func configureRKE2(opts options) (bool, error) {
+	dropInPath := opts.RKE2ConfigDropInPath
+	if dropInPath == "" {
+		dropInPath = "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml"
+	}
+
+	// RKE2 has no flags of its own for these, unlike k3s. They reach the
+	// embedded kubelet through kubelet-arg, without the leading dashes.
+	content := fmt.Sprintf(`kubelet-arg:
+  - "image-credential-provider-bin-dir=%s"
+  - "image-credential-provider-config=%s"
+`, opts.BinDir, opts.ConfigPath)
+
+	hostDropInPath := hostPath(opts, dropInPath)
+	if err := os.MkdirAll(filepath.Dir(hostDropInPath), 0755); err != nil {
+		return false, fmt.Errorf("create rke2 config drop-in directory: %w", err)
+	}
+	changed, err := writeFileIfChanged(hostDropInPath, []byte(content), 0644, true)
+	if err != nil {
+		return false, fmt.Errorf("write rke2 config drop-in: %w", err)
+	}
+	if changed {
+		fmt.Printf("[INFO] Wrote rke2 config drop-in: %s\n", hostDropInPath)
+	} else {
+		fmt.Printf("[INFO] rke2 config drop-in already up to date: %s\n", hostDropInPath)
+	}
+	return changed, nil
+}
+
+// configureKubeletDefaults patches the kubelet EnvironmentFile that AKS nodes
+// build their command line from. The AKS kubelet unit expands $KUBELET_FLAGS
+// and never $KUBELET_EXTRA_ARGS, so the drop-in the generic profile writes is
+// valid, is read, and does nothing.
+func configureKubeletDefaults(opts options) (bool, error) {
+	path := opts.KubeletDefaultsPath
+	if path == "" {
+		path = "/etc/default/kubelet"
+	}
+	hostDefaultsPath := hostPath(opts, path)
+
+	existing, err := os.ReadFile(hostDefaultsPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("kubelet defaults file %s does not exist; this node does not build its kubelet command line from KUBELET_FLAGS. Set kubelet.configure=false and wire the flags yourself", hostDefaultsPath)
+	}
+	if err != nil {
+		return false, fmt.Errorf("read kubelet defaults: %w", err)
+	}
+
+	updated, err := setKubeletFlags(string(existing), opts.BinDir, opts.ConfigPath)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", hostDefaultsPath, err)
+	}
+
+	changed, err := writeFileIfChanged(hostDefaultsPath, []byte(updated), 0644, true)
+	if err != nil {
+		return false, fmt.Errorf("write kubelet defaults: %w", err)
+	}
+	if changed {
+		fmt.Printf("[INFO] Patched KUBELET_FLAGS in %s\n", hostDefaultsPath)
+	} else {
+		fmt.Printf("[INFO] KUBELET_FLAGS already up to date: %s\n", hostDefaultsPath)
+	}
+	return changed, nil
+}
+
+// setKubeletFlags rewrites the KUBELET_FLAGS assignment so that it carries
+// exactly these two credential provider flags. Earlier values for them are
+// replaced rather than appended to, so changing binDir and reinstalling
+// converges instead of leaving a duplicate flag behind.
+//
+// A commented-out assignment is not an assignment. Where there is more than
+// one active assignment the last one is patched, because that is the one
+// systemd's EnvironmentFile parser leaves in the environment.
+func setKubeletFlags(content, binDir, configPath string) (string, error) {
+	lines := strings.Split(content, "\n")
+	target := -1
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimLeft(line, " \t"), "KUBELET_FLAGS=") {
+			target = i
+		}
+	}
+	if target < 0 {
+		return "", errors.New("no active KUBELET_FLAGS assignment")
+	}
+
+	line := strings.TrimRight(lines[target], " \t\r")
+	key, value, _ := strings.Cut(line, "=")
+	value = unquote(strings.TrimSpace(value))
+
+	fields := strings.Fields(value)
+	fields = stripFlag(fields, binDirFlag)
+	fields = stripFlag(fields, configFlag)
+	fields = append(fields, binDirFlag+"="+binDir, configFlag+"="+configPath)
+
+	// Always quoted on the way out. An unquoted value with spaces is fine for
+	// systemd, and breaks anything that sources the file as a shell script.
+	lines[target] = fmt.Sprintf("%s=%q", key, strings.Join(fields, " "))
+	return strings.Join(lines, "\n"), nil
+}
+
+// stripFlag removes a flag from an argument list in both the --flag=value and
+// the --flag value spelling.
+func stripFlag(fields []string, flag string) []string {
+	kept := make([]string, 0, len(fields))
+	for i := 0; i < len(fields); i++ {
+		switch {
+		case fields[i] == flag:
+			i++ // and its value, which is the next field
+		case strings.HasPrefix(fields[i], flag+"="):
+		default:
+			kept = append(kept, fields[i])
+		}
+	}
+	return kept
+}
+
+// configureMicroK8sArgs edits the snap's kubelet arguments file. MicroK8s runs
+// kubelet inside kubelite, which reads its arguments from this file at startup
+// rather than from a command line or a systemd drop-in.
+func configureMicroK8sArgs(opts options) (bool, error) {
+	path := opts.MicroK8sArgsPath
+	if path == "" {
+		path = "/var/snap/microk8s/current/args/kubelet"
+	}
+	hostArgsPath := hostPath(opts, path)
+
+	existing, err := os.ReadFile(hostArgsPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("MicroK8s kubelet arguments file %s does not exist; is MicroK8s installed on this node?", hostArgsPath)
+	}
+	if err != nil {
+		return false, fmt.Errorf("read MicroK8s kubelet arguments: %w", err)
+	}
+
+	updated := setMicroK8sKubeletArgs(string(existing), opts.BinDir, opts.ConfigPath)
+	changed, err := writeFileIfChanged(hostArgsPath, []byte(updated), 0644, true)
+	if err != nil {
+		return false, fmt.Errorf("write MicroK8s kubelet arguments: %w", err)
+	}
+	if changed {
+		fmt.Printf("[INFO] Wrote MicroK8s kubelet arguments: %s\n", hostArgsPath)
+	} else {
+		fmt.Printf("[INFO] MicroK8s kubelet arguments already up to date: %s\n", hostArgsPath)
+	}
+	return changed, nil
+}
+
+// setMicroK8sKubeletArgs drops any existing lines for the two credential
+// provider flags and appends the current ones. The file is one argument per
+// line; every other line keeps its place.
+func setMicroK8sKubeletArgs(content, binDir, configPath string) string {
+	kept := make([]string, 0)
+	for _, line := range strings.Split(content, "\n") {
+		field, _, _ := strings.Cut(strings.TrimSpace(line), " ")
+		field, _, _ = strings.Cut(field, "=")
+		if field == binDirFlag || field == configFlag {
+			continue
+		}
+		kept = append(kept, line)
+	}
+
+	// Trailing blank lines would push the appended arguments away from the
+	// rest, and a file that does not end in a newline would join its last
+	// argument to the first appended one.
+	for len(kept) > 0 && strings.TrimSpace(kept[len(kept)-1]) == "" {
+		kept = kept[:len(kept)-1]
+	}
+	kept = append(kept, binDirFlag+"="+binDir, configFlag+"="+configPath, "")
+	return strings.Join(kept, "\n")
+}
+
 // kubeletRestartNeeded reports whether kubelet still has to pick up this
 // install. Host changes are the obvious case. The other one is a node whose
 // last completed install ID differs from this one: every host file can already
@@ -608,8 +837,11 @@ func restartKubelet(opts options) error {
 	}
 
 	service := opts.KubeletService
-	if opts.Profile == "k3s" || opts.Profile == "k3d" {
+	switch opts.Profile {
+	case "k3s", "k3d":
 		service = detectK3sService(opts, service)
+	case "rke2":
+		service = detectRKE2Service(opts, service)
 	}
 	if service == "" {
 		service = "kubelet"
@@ -655,6 +887,30 @@ func detectK3sService(opts options, fallback string) string {
 		return "k3s"
 	}
 	return "k3s"
+}
+
+// detectRKE2Service picks the unit that is actually installed. A node runs
+// either the server or the agent, and only that unit's file is present.
+func detectRKE2Service(opts options, fallback string) string {
+	if fallback != "" && fallback != "rke2-agent" {
+		return fallback
+	}
+	// Tarball installs land in /usr/local/lib/systemd/system, RPM installs in
+	// /usr/lib/systemd/system, and either may be overridden in /etc.
+	unitDirs := []string{
+		"/etc/systemd/system",
+		"/usr/local/lib/systemd/system",
+		"/usr/lib/systemd/system",
+		"/lib/systemd/system",
+	}
+	for _, service := range []string{"rke2-agent", "rke2-server"} {
+		for _, dir := range unitDirs {
+			if fileExists(hostPath(opts, filepath.Join(dir, service+".service"))) {
+				return service
+			}
+		}
+	}
+	return "rke2-agent"
 }
 
 // markerState is what the host marker says about the install the node last
@@ -972,6 +1228,19 @@ func configFormatForPath(path string) string {
 		return "json"
 	}
 	return "yaml"
+}
+
+// unquote strips one layer of matching surrounding quotes. AKS node images
+// have written KUBELET_FLAGS both quoted and unquoted over the years.
+func unquote(value string) string {
+	if len(value) < 2 {
+		return value
+	}
+	quote := value[0]
+	if (quote == '"' || quote == '\'') && value[len(value)-1] == quote {
+		return value[1 : len(value)-1]
+	}
+	return value
 }
 
 func fileExists(path string) bool {

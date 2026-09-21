@@ -1,7 +1,9 @@
 # /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml
 #
-# Place this on every RKE2 node before installing the chart, then restart
-# rke2-agent (or rke2-server on server nodes).
+# This is what the rke2 profile writes. It is here for reference, and for
+# clusters whose node configuration is provisioned declaratively rather than by
+# the DaemonSet. RKE2 has no flags of its own for these, unlike k3s: they reach
+# the embedded kubelet through kubelet-arg, without the leading dashes.
 
 kubelet-arg:
   - "image-credential-provider-bin-dir=/var/lib/rancher/credentialprovider/bin"

@@ -1,21 +1,13 @@
 # MicroK8s.
 #
-# kubelet runs from the snap as snap.microk8s.daemon-kubelite, and its arguments
-# come from /var/snap/microk8s/current/args/kubelet. The chart places the binary
-# and the config under the snap's writable tree; you add the two arguments.
+# kubelet runs from the snap inside kubelite, and its arguments come from
+# /var/snap/microk8s/current/args/kubelet rather than from a command line or a
+# systemd drop-in. The microk8s profile edits that file and restarts
+# snap.microk8s.daemon-kubelite. The binary and the config go under
+# /var/snap/microk8s/common, which survives a snap refresh.
 
-profile: custom
-
-credentialProvider:
-  binDir: /var/snap/microk8s/common/credentialprovider/bin
-  configPath: /var/snap/microk8s/common/credentialprovider/config.yaml
-  configFormat: yaml
+profile: microk8s
 
 registry:
   host: harbor.example.com
   audience: harbor.example.com
-
-kubelet:
-  configure: false
-  restart: true
-  serviceName: snap.microk8s.daemon-kubelite
