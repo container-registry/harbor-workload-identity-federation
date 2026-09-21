@@ -59,7 +59,7 @@ sub == system:serviceaccount:<namespace>:<service-account>
 
 For the default service account in the default namespace, `sub` is `system:serviceaccount:default:default`.
 
-The Harbor side is documented in full at https://container-registry.com/docs/.
+The Harbor side is documented in full: [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/) covers the IDP, the JWKS handling and the claim rules, and [Authenticating a Workload with Federated Identity](https://container-registry.com/docs/2.16/user-manual/images/authenticating-a-workload-with-federated-identity/) covers presenting the token.
 
 ## Shared Files
 

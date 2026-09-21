@@ -33,9 +33,23 @@ kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 
 The installer restarts `rke2-agent` on worker nodes and `rke2-server` on server nodes, picking whichever unit is installed. Override it with `--set kubelet.serviceName=...` if your nodes name it differently.
 
-## A Node That Manages `config.yaml` by Hand
+## If You Already Set `kubelet-arg` Yourself
 
-If you keep all RKE2 settings in a single `/etc/rancher/rke2/config.yaml` rather than in `config.yaml.d`, the drop-in still applies: RKE2 reads both. What it does not do is merge two `kubelet-arg` lists the way you might expect, so a `kubelet-arg` list in the main file can shadow the drop-in. Check `journalctl -u rke2-agent` after the restart, and if the flags are missing, merge the two entries from [`config.yaml`](config.yaml) into your own file and install with `--set kubelet.configure=false`.
+Read this one before installing. RKE2 reads `/etc/rancher/rke2/config.yaml` first and then `config.yaml.d/*.yaml` in alphabetical order, and for a repeated key the last file wins outright. It does not merge the two lists. So the installer's `99-credential-provider-harbor.yaml` sorts last, the credential provider flags do apply, and **any `kubelet-arg` entries of your own are replaced by them.**
+
+If you have none, there is nothing to do. If you have some, either add them to a drop-in that sorts after `99-`, or keep the installer out of it:
+
+```bash
+--set kubelet.configure=false
+```
+
+and merge the two entries from [`config.yaml`](config.yaml) into your own `kubelet-arg` list by hand. RKE2 also accepts a `kubelet-arg+:` key, which appends to the value from the earlier file instead of replacing it; the installer does not use it, because a silently unrecognized key would be a worse failure than a visible one.
+
+Check what the supervisor actually got after the restart:
+
+```bash
+journalctl -u rke2-agent | grep -i kubelet-arg   # rke2-server on a server node
+```
 
 ## Check It Took
 

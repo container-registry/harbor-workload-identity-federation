@@ -3,8 +3,9 @@
 # kubelet is embedded in the rke2-agent process, so there is no kubelet systemd
 # unit to drop a file into. The rke2 profile writes the flags to
 # /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml under
-# kubelet-arg and restarts the agent. Server nodes also need the Harbor
-# audience in kube-apiserver-arg; that part is still yours, and is in README.md.
+# kubelet-arg and restarts whichever supervisor unit the node runs, rke2-agent
+# or rke2-server. Server nodes also need the Harbor audience in
+# kube-apiserver-arg; that part is still yours, and is in README.md.
 
 profile: rke2
 
