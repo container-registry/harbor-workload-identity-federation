@@ -1238,27 +1238,37 @@ func TestValidateOptionsRejectsPathsThatBreakTheFilesTheyGoInto(t *testing.T) {
 
 	// Each of these ends up inside a systemd Environment= line, a kind
 	// ExecStart line, a YAML drop-in, the MicroK8s arguments file, or the AKS
-	// KUBELET_FLAGS assignment, and breaks at least one of them.
-	for _, path := range []string{
-		`/opt/a b/providers`,
-		"/opt/a\tb/providers",
-		`/opt/it's/providers`,
-		`/opt/say"hi/providers`,
-		`/opt/back\slash/providers`,
-		"/opt/new\nline/providers",
+	// KUBELET_FLAGS assignment, and breaks at least one of them. systemd
+	// expands $VAR in ExecStart and reads % as a specifier escape.
+	//
+	// The subtest name is the character under test rather than the path, so
+	// that -run patterns and failure output stay readable: the paths contain
+	// spaces, quotes and a newline.
+	for _, tt := range []struct {
+		name string
+		path string
+	}{
+		{"space", `/opt/a b/providers`},
+		{"tab", "/opt/a\tb/providers"},
+		{"newline", "/opt/new\nline/providers"},
+		{"single quote", `/opt/it's/providers`},
+		{"double quote", `/opt/say"hi/providers`},
+		{"backslash", `/opt/back\slash/providers`},
+		{"dollar", `/opt/$HOME/providers`},
+		{"percent", `/opt/%i/providers`},
 	} {
-		t.Run("binDir "+path, func(t *testing.T) {
+		t.Run("binDir with a "+tt.name, func(t *testing.T) {
 			opts := base
-			opts.BinDir = path
+			opts.BinDir = tt.path
 			if err := validateOptions(opts); err == nil {
-				t.Fatal("validateOptions() returned nil error, want an unsafe path error")
+				t.Fatalf("validateOptions() on BinDir %q returned nil error, want an unsafe path error", tt.path)
 			}
 		})
-		t.Run("configPath "+path, func(t *testing.T) {
+		t.Run("configPath with a "+tt.name, func(t *testing.T) {
 			opts := base
-			opts.ConfigPath = path
+			opts.ConfigPath = tt.path
 			if err := validateOptions(opts); err == nil {
-				t.Fatal("validateOptions() returned nil error, want an unsafe path error")
+				t.Fatalf("validateOptions() on ConfigPath %q returned nil error, want an unsafe path error", tt.path)
 			}
 		})
 	}

@@ -354,7 +354,13 @@ tasks:
         reject "a binaryName of ." --set registry.host=harbor.example.com --set credentialProvider.binaryName=.
         reject "a binaryName of .." --set registry.host=harbor.example.com --set credentialProvider.binaryName=..
         reject "a binDir with a space in it" --set registry.host=harbor.example.com --set 'credentialProvider.binDir=/opt/a b'
-        reject "a configPath with a quote in it" --set registry.host=harbor.example.com --set 'credentialProvider.configPath=/etc/it"s/config.yaml'
+        reject "a binDir with a systemd specifier" --set registry.host=harbor.example.com --set 'credentialProvider.binDir=/opt/%i/providers'
+        # Through a values file, not --set: helm's strvals parser treats a lone
+        # double quote as a delimiter, and the point of this case is what the
+        # schema does, not what strvals does.
+        quoted=$(mktemp) && trap 'rm -f "$quoted"' EXIT
+        printf 'registry:\n  host: harbor.example.com\ncredentialProvider:\n  configPath: /etc/it"s/config.yaml\n' > "$quoted"
+        reject "a configPath with a quote in it" -f "$quoted"
         reject "a relative kubeletDefaultsPath" --set registry.host=harbor.example.com --set kubelet.kubeletDefaultsPath=etc/default/kubelet
         reject "a relative rke2ConfigDropInPath" --set registry.host=harbor.example.com --set kubelet.rke2ConfigDropInPath=etc/rancher/rke2/config.yaml.d/99.yaml
         reject "a relative microk8sArgsPath" --set registry.host=harbor.example.com --set kubelet.microk8sArgsPath=var/snap/microk8s/current/args/kubelet

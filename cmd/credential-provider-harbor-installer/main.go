@@ -422,11 +422,13 @@ func validateOptions(opts options) error {
 	// These two are pasted verbatim into a systemd Environment= line, a kind
 	// ExecStart line, two YAML drop-ins, the MicroK8s arguments file and the
 	// AKS KUBELET_FLAGS assignment. Each of those has its own quoting rules,
-	// and a path carrying a quote or whitespace parses as something else in
-	// at least one of them. Refusing is safer than escaping five ways.
+	// and a path carrying any of these parses as something else in at least
+	// one of them: systemd expands $VAR in ExecStart and reads % as a
+	// specifier escape, and the rest break the quoting. Refusing is safer
+	// than escaping five ways, and no real path needs them.
 	for name, path := range map[string]string{"BIN_DIR": opts.BinDir, "CONFIG_PATH": opts.ConfigPath} {
-		if i := strings.IndexAny(path, " \t\r\n\"'\\"); i >= 0 {
-			return fmt.Errorf("%s must not contain whitespace, quotes or backslashes: %q", name, path)
+		if strings.ContainsAny(path, " \t\r\n\"'\\$%") {
+			return fmt.Errorf("%s must not contain whitespace, quotes, backslashes, $ or %%: %q", name, path)
 		}
 	}
 

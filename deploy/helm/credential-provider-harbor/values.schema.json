@@ -111,13 +111,13 @@
         },
         "binDir": {
           "type": "string",
-          "pattern": "^(/[^/\\s\"'\\\\]+(/[^/\\s\"'\\\\]+)*)?$",
-          "description": "Absolute host path, or empty to take the profile default. The installer writes the provider binary inside this directory, so / and a trailing slash are rejected, as are whitespace, quotes and backslashes: the path is pasted verbatim into the kubelet argument files."
+          "pattern": "^(/[^/\\s\"'\\\\$%]+(/[^/\\s\"'\\\\$%]+)*)?$",
+          "description": "Absolute host path, or empty to take the profile default. The installer writes the provider binary inside this directory, so / and a trailing slash are rejected, as are whitespace, quotes, backslashes, $ and %: the path is pasted verbatim into the kubelet argument files, where systemd would read $ and % as expansions."
         },
         "configPath": {
           "type": "string",
-          "pattern": "^(/[^/\\s\"'\\\\]+(/[^/\\s\"'\\\\]+)*)?$",
-          "description": "Absolute host path, or empty to take the profile default. It names the config file itself, so / and a trailing slash are rejected, as are whitespace, quotes and backslashes: the path is pasted verbatim into the kubelet argument files."
+          "pattern": "^(/[^/\\s\"'\\\\$%]+(/[^/\\s\"'\\\\$%]+)*)?$",
+          "description": "Absolute host path, or empty to take the profile default. It names the config file itself, so / and a trailing slash are rejected, as are whitespace, quotes, backslashes, $ and %: the path is pasted verbatim into the kubelet argument files, where systemd would read $ and % as expansions."
         },
         "configFormat": {
           "enum": [
