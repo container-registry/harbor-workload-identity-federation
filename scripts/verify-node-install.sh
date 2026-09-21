@@ -47,15 +47,26 @@ cleanup_debug_pods() {
 }
 
 # Runs a shell snippet on a node through a debug pod, chrooted into the host.
+#
+# Every snippet below prints something on every path, so empty output means the
+# attach never saw the container rather than that the node answered "nothing".
+# A node that has just restarted its kubelet does that reliably, because the
+# debug pod cannot start until kubelet is back, and an install is exactly when
+# you run this. Without the retry a healthy node reads as having no kubelet.
 on_node() {
-  local node=$1 script=$2 rc=0 out
-  out=$(kubectl debug "node/${node}" \
-    --image="${DEBUG_IMAGE}" \
-    --profile=sysadmin \
-    --namespace="${NAMESPACE}" \
-    -q --attach=true \
-    -- chroot /host /bin/sh -c "${script}" 2>/dev/null) || rc=$?
-  cleanup_debug_pods "${node}"
+  local node=$1 script=$2 rc out
+  for _ in 1 2 3; do
+    rc=0
+    out=$(kubectl debug "node/${node}" \
+      --image="${DEBUG_IMAGE}" \
+      --profile=sysadmin \
+      --namespace="${NAMESPACE}" \
+      -q --attach=true \
+      -- chroot /host /bin/sh -c "${script}" 2>/dev/null) || rc=$?
+    cleanup_debug_pods "${node}"
+    [ "${rc}" -eq 0 ] && [ -z "${out}" ] || break
+    sleep 5
+  done
   printf '%s' "${out}"
   return "${rc}"
 }
@@ -242,8 +253,15 @@ check_node() {
     return 1
   fi
 
+  if [ -z "${cmdline}" ]; then
+    red "  the debug pod produced no output, three times"
+    echo "     That is a kubectl debug problem, not a diagnosis of the node."
+    echo "     If kubelet was just restarted, give it a moment and run again."
+    return 1
+  fi
+
   case "${cmdline}" in
-    *NO_KUBELET_PROCESS*|'')
+    *NO_KUBELET_PROCESS*)
       red "  no kubelet process found"
       echo "     Looked for kubelet, kubelite, and the rke2 and k3s supervisors."
       return 1
