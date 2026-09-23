@@ -1,0 +1,168 @@
+name: Release Chart
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Chart release tag, for example chart-v0.2.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Chart release tag, for example chart-v0.2.0
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS || '8gears.container-registry.com' }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME || '8gcr' }}
+  REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+  # The push job may not read this from the packaged chart: that file comes
+  # from the ref being released, and the push job is the one holding the
+  # registry password.
+  CHART_NAME: credential-provider-harbor
+
+# The two jobs split on the credential boundary. `package` runs repository
+# code from the released ref and has no registry password. `push` has the
+# password and runs no repository code at all: it only downloads the artifact
+# `package` produced and calls helm directly.
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      # Runs before the checkout. workflow_dispatch lets anyone with write
+      # access name this ref, and the checkout below executes the ref's
+      # Taskfile, so only a chart release tag gets through.
+      - name: Validate the chart tag
+        id: tag
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+          # gh resolves the repository from the checkout, and this step runs
+          # before it. Without this the release lookup below cannot run at all
+          # and the gate fails every chart release.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          # Whole-string checks, not a line-oriented regex: the input can carry
+          # newlines, and a single matching line must not pass the whole value.
+          version=${TAG_NAME#chart-v}
+          valid=yes
+          # The prefix has to have been stripped, and what is left has to be
+          # exactly three dot-separated runs of digits.
+          [ "$version" != "$TAG_NAME" ] || valid=no
+          case "$version" in
+            *.*.*) ;;
+            *) valid=no ;;
+          esac
+          rest=${version#*.}
+          for part in "${version%%.*}" "${rest%%.*}" "${rest#*.}"; do
+            case "$part" in
+              '' | *[!0-9]*) valid=no ;;
+            esac
+          done
+          if [ "$valid" != yes ]; then
+            echo "ERROR: refusing to publish from ref '$TAG_NAME'; expected chart-vX.Y.Z" >&2
+            exit 1
+          fi
+
+          # The shape alone proves nothing: anyone with write access can push a
+          # tag that matches it. Require the published Release that
+          # release-please creates, so a hand-pushed tag cannot publish.
+          draft=$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' 2>/dev/null) || draft=""
+          if [ "$draft" != "false" ]; then
+            echo "ERROR: '$TAG_NAME' has no published release; refusing to publish" >&2
+            exit 1
+          fi
+
+          # Resolve the tag to the commit it points at now, while the
+          # published Release has just been verified, and check that out
+          # below. A tag can be retargeted between this step and the
+          # checkout; a commit id cannot.
+          sha=$(gh api "repos/$GH_REPO/commits/$TAG_NAME" --jq '.sha')
+          case "$sha" in
+            *[!0-9a-f]* | '') echo "ERROR: could not resolve '$TAG_NAME' to a commit" >&2; exit 1 ;;
+          esac
+
+          {
+            echo "tag=$TAG_NAME"
+            echo "version=$version"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # The commit the tag resolved to, not the tag. A branch named
+          # chart-v9.9.9 wins a bare lookup, and a tag can be moved after the
+          # Release check above; a commit id is neither.
+          ref: ${{ steps.tag.outputs.sha }}
+          persist-credentials: false
+
+      - uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+      # CHART_VERSION comes from the tag, not from the checked out Chart.yaml,
+      # so the packaged version is the one that was released.
+      - name: Package the chart
+        env:
+          CHART_VERSION: ${{ steps.tag.outputs.version }}
+        run: task helm-package "CHART_VERSION=$CHART_VERSION"
+
+      # The path is the exact filename the tag implies. A Taskfile that
+      # packaged something else fails here rather than in the push job.
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: chart-package
+          path: dist/${{ env.CHART_NAME }}-${{ steps.tag.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  push:
+    needs: [package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Read only, and the job never checks the repository out. The scope is
+    # here for the tool setup action, not for repository code.
+    permissions:
+      contents: read
+    steps:
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: chart-package
+          path: dist
+
+      - name: Log in to the Helm registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          printf '%s' "$REGISTRY_PASSWORD" \
+            | helm registry login "$REGISTRY_ADDRESS" --username "$REGISTRY_USERNAME" --password-stdin
+
+      # `task helm-push` is the local equivalent. It is deliberately not used
+      # here: running it would mean executing the released ref's task
+      # definitions while the registry credentials are loaded.
+      - name: Push the chart
+        env:
+          CHART_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          set -eu
+          chart="dist/${CHART_NAME}-${CHART_VERSION}.tgz"
+          if [ ! -f "$chart" ]; then
+            echo "ERROR: $chart is missing from the packaged artifact" >&2
+            exit 1
+          fi
+          helm push "$chart" "oci://${REGISTRY_ADDRESS}/${PROJECT_NAME}"

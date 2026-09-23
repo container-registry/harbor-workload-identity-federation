@@ -4,16 +4,19 @@ vars:
   APP: credential-provider-harbor
   INSTALLER: credential-provider-harbor-installer
   MODULE: github.com/container-registry/harbor-workload-identity-federation
-  VERSION:
+  CHART_DIR: deploy/helm/credential-provider-harbor
+  DIST: '{{default "dist" .DIST}}'
+  # Version of the binaries and the image. Overridable: task docker-push VERSION=v1.2.3
+  GIT_VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
-  CHART_VERSION:
-    sh: |
-      tag=$(git describe --tags --exact-match 2>/dev/null || true)
-      if [ -n "$tag" ]; then
-        printf '%s' "${tag#v}"
-      else
-        awk '/^version:/ {print $2}' deploy/helm/credential-provider-harbor/Chart.yaml
-      fi
+  VERSION: '{{default .GIT_VERSION .VERSION}}'
+  # Chart version and appVersion come from Chart.yaml, which release-please maintains.
+  CHART_VERSION_FILE:
+    sh: awk '/^version:/ {print $2; exit}' deploy/helm/credential-provider-harbor/Chart.yaml
+  CHART_APP_VERSION_FILE:
+    sh: awk '/^appVersion:/ {gsub(/"/, "", $2); print $2; exit}' deploy/helm/credential-provider-harbor/Chart.yaml
+  CHART_VERSION: '{{default .CHART_VERSION_FILE .CHART_VERSION}}'
+  CHART_APP_VERSION: '{{default .CHART_APP_VERSION_FILE .CHART_APP_VERSION}}'
   REGISTRY_ADDRESS: '{{default "8gears.container-registry.com" .REGISTRY_ADDRESS}}'
   PROJECT_NAME: '{{default "8gcr" .PROJECT_NAME}}'
   REGISTRY: '{{.REGISTRY_ADDRESS}}/{{.PROJECT_NAME}}'
@@ -52,30 +55,32 @@ tasks:
     cmds:
       - go build -ldflags="-s -w -X main.version={{.VERSION}}"
           -o bin/{{.APP}} ./cmd/{{.APP}}/
-      - go build -ldflags="-s -w"
+      - go build -ldflags="-s -w -X main.version={{.VERSION}}"
           -o bin/{{.INSTALLER}} ./cmd/{{.INSTALLER}}/
 
   build-all:
     desc: Cross-compile for linux/amd64 and linux/arm64
     cmds:
-      - for:
-          matrix:
-            GOOS: [linux]
-            GOARCH: [amd64, arm64]
+      - task: _cross-build
+        vars: {BINARY: '{{.APP}}', PACKAGE: './cmd/{{.APP}}/', OUT_DIR: bin}
+      - task: _cross-build
+        vars: {BINARY: '{{.INSTALLER}}', PACKAGE: './cmd/{{.INSTALLER}}/', OUT_DIR: bin}
+
+  # The one place that decides which platforms are supported and which build
+  # flags they get. build-all and release-assets both go through it, so a
+  # local cross-compile cannot drift from the released binaries.
+  _cross-build:
+    internal: true
+    requires:
+      vars: [BINARY, PACKAGE, OUT_DIR]
+    cmds:
+      - mkdir -p {{.OUT_DIR}}
+      - for: [amd64, arm64]
         cmd: >-
-          CGO_ENABLED=0 GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}}
-          go build -ldflags="-s -w -X main.version={{.VERSION}}"
-          -o bin/{{.APP}}-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
-          ./cmd/{{.APP}}/
-      - for:
-          matrix:
-            GOOS: [linux]
-            GOARCH: [amd64, arm64]
-        cmd: >-
-          CGO_ENABLED=0 GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}}
-          go build -ldflags="-s -w"
-          -o bin/{{.INSTALLER}}-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
-          ./cmd/{{.INSTALLER}}/
+          CGO_ENABLED=0 GOOS=linux GOARCH={{.ITEM}}
+          go build -trimpath -ldflags="-s -w -X main.version={{.VERSION}}"
+          -o {{.OUT_DIR}}/{{.BINARY}}-linux-{{.ITEM}}
+          {{.PACKAGE}}
 
   docker-build:
     desc: Build Docker image for the local platform
@@ -102,19 +107,49 @@ tasks:
           --push .
 
   helm-package:
-    desc: Package the Helm chart
+    desc: Package the Helm chart into dist/
     cmds:
-      - mkdir -p dist
-      - helm package deploy/helm/{{.CHART}}/
-          --destination dist
+      - mkdir -p {{.DIST}}
+      - helm package {{.CHART_DIR}}/
+          --destination {{.DIST}}
           --version {{.CHART_VERSION}}
-          --app-version {{.VERSION}}
+          --app-version {{.CHART_APP_VERSION}}
 
   helm-push:
-    desc: Package and push the Helm chart as OCI
+    desc: Package and push the Helm chart as an OCI artifact
     deps: [helm-package]
     cmds:
-      - helm push dist/{{.CHART}}-{{.CHART_VERSION}}.tgz oci://{{.REGISTRY}}
+      - helm push {{.DIST}}/{{.CHART}}-{{.CHART_VERSION}}.tgz oci://{{.REGISTRY}}
+
+  version-check:
+    desc: Check the chart's appVersion still tracks the released binary version
+    cmds:
+      - |
+        set -eu
+        # The chart's default image tag is "v" plus appVersion, and only the
+        # binary train publishes that image. appVersion therefore has to equal
+        # the binary version release-please records in the manifest.
+        #
+        # Nothing in release-please's helm strategy writes appVersion today:
+        # it updates Chart.yaml through the ChartYaml updater, which sets
+        # `version` only. This check is what makes that an enforced invariant
+        # rather than an assumption about release-please internals. It runs on
+        # release pull requests too, so a chart release that moved appVersion
+        # fails here instead of 404ing on an image pull.
+        app_version='{{.CHART_APP_VERSION_FILE}}'
+        binary_version=$(awk -F'"' '/"\.":/ {print $4; exit}' .release-please-manifest.json)
+        if [ -z "$binary_version" ]; then
+          echo "ERROR: cannot read the \".\" version from .release-please-manifest.json" >&2
+          exit 1
+        fi
+        if [ "$app_version" != "$binary_version" ]; then
+          echo "ERROR: chart appVersion and the released binary version disagree." >&2
+          echo "  Chart.yaml appVersion:              $app_version" >&2
+          echo "  .release-please-manifest.json \".\": $binary_version" >&2
+          echo "  The chart defaults its image tag to v$app_version, which the binary train never published." >&2
+          exit 1
+        fi
+        echo "chart appVersion $app_version matches the released binary version"
 
   helm-lint:
     desc: Lint the Helm chart
@@ -130,10 +165,31 @@ tasks:
       - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=kind >/dev/null
       - helm template credential-provider-harbor deploy/helm/credential-provider-harbor/ --set registry.host=harbor.example.com --set profile=gke >/dev/null
 
+  release-assets:
+    desc: Build the release binaries and checksums into dist/
+    cmds:
+      - rm -rf {{.DIST}} && mkdir -p {{.DIST}}
+      - task: _cross-build
+        vars: {BINARY: '{{.APP}}', PACKAGE: './cmd/{{.APP}}/', OUT_DIR: '{{.DIST}}'}
+      - task: _cross-build
+        vars: {BINARY: '{{.INSTALLER}}', PACKAGE: './cmd/{{.INSTALLER}}/', OUT_DIR: '{{.DIST}}'}
+      # macOS ships shasum, not sha256sum. Both write the same
+      # "<hash>  <file>" lines, so SHA256SUMS is identical either way.
+      - |
+        cd {{.DIST}}
+        if command -v sha256sum >/dev/null 2>&1; then
+          sha256sum credential-provider-* > SHA256SUMS
+        elif command -v shasum >/dev/null 2>&1; then
+          shasum -a 256 credential-provider-* > SHA256SUMS
+        else
+          echo "ERROR: neither sha256sum nor shasum is available, so the checksums cannot be written." >&2
+          exit 1
+        fi
+
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -rf bin/ dist/
+      - rm -rf bin/ {{.DIST}}
 
   check:
     desc: Run every CI check that does not need a cluster
@@ -142,6 +198,7 @@ tasks:
       - task: lint
       - task: test
       - task: build-all
+      - task: version-check
       - task: helm-lint
       - task: helm-template
 

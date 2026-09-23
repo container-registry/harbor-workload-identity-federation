@@ -1,0 +1,162 @@
+name: Release Image
+
+on:
+  # Callers are workflows in this repository, so they may name any ref: ci.yml
+  # publishes a development image for the commit it just tested.
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build from
+        required: true
+        type: string
+      version:
+        description: Image tag. Defaults to `git describe` on the checked out ref.
+        required: false
+        default: ''
+        type: string
+      latest:
+        description: Also move the :latest tag to this build
+        required: false
+        default: false
+        type: boolean
+  # A manual run picks a released tag and nothing else. There is no ref input
+  # here: the job logs into the registry and then runs the Taskfile it finds in
+  # the checkout, so a branch or a bare SHA would publish an image built from
+  # whatever that ref happens to contain, under a version of the dispatcher's
+  # choosing.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build from, for example v0.2.0
+        required: true
+        type: string
+      latest:
+        description: Also move the :latest tag to this build
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+env:
+  REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS || '8gears.container-registry.com' }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME || '8gcr' }}
+  REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      # First step in the job, so it runs before the checkout and well before
+      # the registry login. Inputs reach the shell through the environment and
+      # never through expression interpolation.
+      - name: Resolve the build ref
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          CALL_REF: ${{ inputs.ref }}
+          CALL_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+
+          # Exactly v<digits>.<digits>.<digits>. Glob character classes match
+          # newlines too, so a multi-line value cannot slip a second line past
+          # the check the way an unanchored grep would allow.
+          is_release_tag() { # <value>
+            case "$1" in
+              v*) rest=${1#v} ;;
+              *) return 1 ;;
+            esac
+            major=${rest%%.*}
+            tail=${rest#*.}
+            minor=${tail%%.*}
+            patch=${tail#*.}
+            [ "$major.$minor.$patch" = "$rest" ] || return 1
+            for part in "$major" "$minor" "$patch"; do
+              case "$part" in
+                '' | *[!0-9]*) return 1 ;;
+              esac
+            done
+          }
+
+          if [ -n "$DISPATCH_TAG" ]; then
+            if ! is_release_tag "$DISPATCH_TAG"; then
+              echo "ERROR: refusing to publish from '$DISPATCH_TAG'; expected an exact release tag vX.Y.Z" >&2
+              exit 1
+            fi
+            # A tag on its own proves nothing: anyone with write access can
+            # push one. Require the published Release that release-please
+            # creates, then pin the checkout to the commit it resolves to, so
+            # neither a branch of the same name nor a moved tag can win.
+            draft=$(gh release view "$DISPATCH_TAG" --json isDraft --jq '.isDraft' 2>/dev/null) || draft=""
+            if [ "$draft" != "false" ]; then
+              echo "ERROR: no published GitHub Release for tag '$DISPATCH_TAG'." >&2
+              echo "  Manual image publishes are limited to tags release-please has already released." >&2
+              exit 1
+            fi
+            # The commit the tag points at now, not the tag: a tag can be
+            # retargeted between this step and the checkout below.
+            sha=$(gh api "repos/$GH_REPO/commits/$DISPATCH_TAG" --jq '.sha')
+            case "$sha" in
+              *[!0-9a-f]* | '') echo "ERROR: could not resolve '$DISPATCH_TAG' to a commit" >&2; exit 1 ;;
+            esac
+            build_ref="$sha"
+            build_version="$DISPATCH_TAG"
+          else
+            build_ref="$CALL_REF"
+            build_version="$CALL_VERSION"
+            # Ref syntax only, which also keeps a newline out of $GITHUB_OUTPUT.
+            case "$build_ref" in
+              '' | *[!A-Za-z0-9._/-]*)
+                echo "ERROR: refusing to build from ref '$build_ref'; not a git ref" >&2
+                exit 1
+                ;;
+            esac
+            if [ -n "$build_version" ] && ! is_release_tag "$build_version"; then
+              echo "ERROR: refusing to publish version '$build_version'; expected vX.Y.Z or an empty value" >&2
+              exit 1
+            fi
+          fi
+
+          printf 'ref=%s\n' "$build_ref" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$build_version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ steps.resolve.outputs.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY_ADDRESS }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push the multi-arch image
+        env:
+          # Already validated by the resolve step above, before the login.
+          VERSION_INPUT: ${{ steps.resolve.outputs.version }}
+          PUSH_LATEST: ${{ inputs.latest }}
+        run: |
+          set -eu
+          if [ "$PUSH_LATEST" = "true" ]; then
+            task docker-push ${VERSION_INPUT:+VERSION=$VERSION_INPUT}
+          else
+            task docker-push-version ${VERSION_INPUT:+VERSION=$VERSION_INPUT}
+          fi

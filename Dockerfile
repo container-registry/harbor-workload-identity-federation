@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -ldflags="-s -w -X main.version=${VERSION}" \
     -o /credential-provider-harbor ./cmd/credential-provider-harbor/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -ldflags="-s -w" \
+    go build -ldflags="-s -w -X main.version=${VERSION}" \
     -o /credential-provider-harbor-installer ./cmd/credential-provider-harbor-installer/
 
 FROM alpine:3.21

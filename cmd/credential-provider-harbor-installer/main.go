@@ -15,6 +15,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// version is stamped at build time with -ldflags "-X main.version=<tag>". The
+// installer ships as a release binary and as the deployer image entrypoint, so
+// it reports the same version the provider binary does.
+var version = "dev"
+
 const (
 	providerName = "credential-provider-harbor"
 
@@ -86,6 +91,16 @@ type tokenAttributes struct {
 }
 
 func main() {
+	// The installer is configured through the environment and takes no flags,
+	// so -version is handled here rather than through a flag set that would
+	// start rejecting the arguments the DaemonSet may pass.
+	for _, arg := range os.Args[1:] {
+		if arg == "-version" || arg == "--version" {
+			fmt.Println(version)
+			return
+		}
+	}
+
 	opts, err := optionsFromEnv()
 	if err != nil {
 		exit(err)
@@ -215,6 +230,7 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 
 func run(opts options) error {
 	fmt.Println("[INFO] === credential-provider-harbor installer ===")
+	fmt.Printf("[INFO] Version: %s\n", version)
 	fmt.Printf("[INFO] Profile: %s\n", opts.Profile)
 	fmt.Printf("[INFO] Registry: %s\n", opts.RegistryHost)
 	fmt.Printf("[INFO] Audience: %s\n", opts.RegistryAudience)

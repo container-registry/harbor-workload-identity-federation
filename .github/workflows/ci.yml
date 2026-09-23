@@ -3,22 +3,24 @@ name: CI
 on:
   push:
     branches: [main]
+  # Not filtered by base branch: a stacked pull request targeting another
+  # feature branch has to pass the same checks as one targeting main.
   pull_request:
-    branches: [main]
 
-env:
-  REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS || '8gears.container-registry.com' }}
-  PROJECT_NAME: ${{ vars.PROJECT_NAME || '8gcr' }}
-  REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+permissions: {}
 
 jobs:
-  ci:
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -27,15 +29,15 @@ jobs:
       - uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
 
       - name: Lint
         uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
         with:
-          # Same version Taskfile.yml installs for `task lint`, so a release of
-          # golangci-lint cannot make CI and a local run disagree.
+          # Pinned, so a golangci-lint release cannot fail an unrelated pull
+          # request. Bump it deliberately.
           version: v2.13.2
 
       - name: Test
@@ -44,24 +46,25 @@ jobs:
       - name: Build all platforms
         run: task build-all
 
+      - name: Check chart appVersion against the released binary version
+        run: task version-check
+
       - name: Lint Helm chart
         run: task helm-lint
 
       - name: Render Helm chart profiles
         run: task helm-template
 
-      - name: Set up Docker Buildx
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - name: Login to Harbor Registry
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ${{ env.REGISTRY_ADDRESS }}
-          username: ${{ env.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-
-      - name: Build and push image
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: task docker-push
+  image:
+    needs: [check]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-image.yml
+    with:
+      ref: ${{ github.sha }}
+      # :latest belongs to the most recent release. A merge of a release pull
+      # request triggers this workflow and the release workflow at once, and
+      # whichever finishes last would own the tag.
+      latest: false
+    secrets: inherit
