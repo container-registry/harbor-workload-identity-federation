@@ -1,0 +1,18 @@
+# Blank issues stay on so the public question route SUPPORT.md points at works.
+# Discussions are not enabled on this repository, and a question is neither a
+# bug report, a feature request, nor a proposal.
+blank_issues_enabled: true
+
+contact_links:
+  - name: Documentation
+    url: https://container-registry.com/docs/
+    about: Federated Robot Accounts guides and reference documentation
+  - name: Questions and Usage Help
+    url: https://github.com/container-registry/harbor-workload-identity-federation/blob/main/SUPPORT.md
+    about: What to include in a question, and where to look before asking
+  - name: Technical Support
+    url: https://container-registry.com/contact/support/
+    about: Commercial support for 8gears Container Registry customers
+  - name: Security Vulnerability
+    url: https://github.com/container-registry/harbor-workload-identity-federation/security/advisories/new
+    about: Report security vulnerabilities privately

@@ -1,0 +1,95 @@
+# Configuration for typos spell checker
+# https://github.com/crate-ci/typos
+
+[default]
+# Exempt identifiers by shape, never by length alone: a plain length rule
+# exempts every long CamelCase identifier and hides the typos inside it.
+extend-ignore-identifiers-re = [
+    # Hex digests: pinned action SHAs, sha256/sha512 sums, and the truncated
+    # sha256 install IDs the chart renders. Sixteen hex characters is the
+    # shortest of those; hex holds no prose, so nothing real is lost by
+    # skipping it, and the shape stays far tighter than a bare length rule.
+    "^[0-9a-fA-F]{16,}$",
+]
+
+# Base64 payloads, recognised by their structure rather than by a trailing `=`:
+# the run has to start on a word boundary and be a whole number of four-character
+# groups, the last of which carries the padding. A misspelled identifier that
+# happens to precede an `=` is not a multiple of four and stays checked.
+# An unpadded blob that trips the dictionary gets an explicit entry in
+# [default.extend-identifiers] rather than a wider pattern here.
+extend-ignore-re = [
+    "\\b(?:[A-Za-z0-9+/]{4}){4,}(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)",
+]
+
+[default.extend-words]
+# Project terms that look like typos
+fedidp = "fedidp"
+iat = "iat"
+aud = "aud"
+jwks = "jwks"
+
+# Common tech abbreviations
+cfg = "cfg"
+ctx = "ctx"
+req = "req"
+resp = "resp"
+impl = "impl"
+init = "init"
+
+[files]
+extend-exclude = [
+    # ===========================================
+    # Permanently excluded (not human-written text)
+    # ===========================================
+
+    # Certificate and key files
+    "*.pem",
+    "*.crt",
+    "*.cer",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "*.csr",
+
+    # Generated files
+    "*.pb.go",
+    "*.generated.go",
+    "*_gen.go",
+    "CHANGELOG.md",
+
+    # Vendor directories
+    "vendor/",
+    "node_modules/",
+
+    # Build artifacts
+    "dist/",
+    "build/",
+
+    # Lock files
+    "go.sum",
+    "package-lock.json",
+    "yarn.lock",
+    "Cargo.lock",
+
+    # Test fixtures and snapshots
+    "**/testdata/",
+    "**/__snapshots__/",
+
+    # Binary assets
+    "images/",
+]
+
+[type.md]
+extend-ignore-re = [
+    # URLs
+    "https?://[^\\s]+",
+    # Code blocks
+    "```[\\s\\S]*?```",
+    # Inline code
+    "`[^`]+`",
+    # The contributor table the Contributors workflow rewrites: GitHub handles
+    # and display names are not words. Only the block between the markers is
+    # skipped, so the hand-written prose around it stays checked.
+    "(?s)<!-- readme: contributors -start -->.*?<!-- readme: contributors -end -->",
+]

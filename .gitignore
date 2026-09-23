@@ -1,2 +1,12 @@
 bin/
+dist/
 test-fedidp/
+.task/
+ws/
+
+# npm ci in .github/scripts pulls js-yaml for the settings script.
+node_modules/
+
+# `go-licenses report ./...` writes here when run by hand; CI keeps it out of
+# the checkout.
+licenses.txt

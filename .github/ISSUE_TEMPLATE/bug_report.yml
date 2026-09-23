@@ -1,0 +1,143 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+        **Before submitting**, please search [existing issues](https://github.com/container-registry/harbor-workload-identity-federation/issues) to avoid duplicates.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug
+      placeholder: Describe what happened and what you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release of this project you are running, or the chart version
+      placeholder: "e.g., v0.1.0 / chart 0.1.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part is misbehaving?
+      options:
+        - credential-provider-harbor (kubelet plugin)
+        - credential-provider-harbor-installer (on-node installer)
+        - Helm chart
+        - Examples or scripts
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: distribution
+    attributes:
+      label: Kubernetes Distribution
+      description: Where the node runs
+      options:
+        - kubeadm / generic systemd
+        - EKS
+        - GKE
+        - AKS
+        - k3s
+        - k3d
+        - kind
+        - RKE2
+        - Talos
+        - MicroK8s
+        - OpenShift
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: profile
+    attributes:
+      label: Installation Profile
+      description: The `profile` value you installed the chart with, or `direct binary`
+      placeholder: "e.g., generic, eks, k3s, kind, custom"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment-details
+    attributes:
+      label: Environment Details
+      description: |
+        Node and cluster information:
+        - Kubernetes version (`kubectl version`)
+        - Node OS and version
+        - Harbor / Container Registry version and the configured Federated IDP audience
+      placeholder: |
+        - Kubernetes: v1.34.1
+        - Node OS: Ubuntu 24.04
+        - Registry: 8gears.container-registry.com, audience harbor.example.com
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: |
+        Installer pod logs (`kubectl logs -n kube-system -l app.kubernetes.io/name=credential-provider-harbor`,
+        with your release namespace if it is not kube-system),
+        kubelet logs around the failed pull (`journalctl -u kubelet`), and the credential
+        provider config written on the node. Redact tokens before pasting.
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or information about the problem
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched for similar issues and this is not a duplicate
+          required: true
+        - label: I have provided all the requested information
+          required: true
