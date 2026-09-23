@@ -1,6 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "credential-provider-harbor values",
+  "definitions": {
+    "kubeletArgumentPath": {
+      "description": "Absolute host path, or empty to take the profile default. It names something inside a parent directory, so / and a trailing slash are rejected, as are whitespace, quotes, backslashes, $ and %: the path is pasted verbatim into the kubelet argument files, where systemd would read $ and % as expansions.",
+      "type": "string",
+      "pattern": "^(/[^/\\s\"'\\\\$%]+(/[^/\\s\"'\\\\$%]+)*)?$"
+    },
+    "filePath": {
+      "description": "Absolute host path naming a file, not a directory: / and any trailing slash are rejected.",
+      "type": "string",
+      "pattern": "^/([^/]+/)*[^/]+$"
+    },
+    "optionalFilePath": {
+      "description": "Absolute host path naming a file, or empty for the profile default. / and a trailing slash are rejected.",
+      "type": "string",
+      "pattern": "^(/([^/]+/)*[^/]+)?$"
+    }
+  },
   "type": "object",
   "required": [
     "registry",
@@ -110,14 +127,16 @@
           "description": "Plain filename. The installer rejects a path separator and the directory names . and .., so the pattern spells out the three ways a name can start without being one of them. Written without lookahead because Helm matches with RE2."
         },
         "binDir": {
-          "type": "string",
-          "pattern": "^(/[^/\\s\"'\\\\$%]+(/[^/\\s\"'\\\\$%]+)*)?$",
-          "description": "Absolute host path, or empty to take the profile default. The installer writes the provider binary inside this directory, so / and a trailing slash are rejected, as are whitespace, quotes, backslashes, $ and %: the path is pasted verbatim into the kubelet argument files, where systemd would read $ and % as expansions."
+          "description": "The installer writes the provider binary inside this directory.",
+          "allOf": [
+            { "$ref": "#/definitions/kubeletArgumentPath" }
+          ]
         },
         "configPath": {
-          "type": "string",
-          "pattern": "^(/[^/\\s\"'\\\\$%]+(/[^/\\s\"'\\\\$%]+)*)?$",
-          "description": "Absolute host path, or empty to take the profile default. It names the config file itself, so / and a trailing slash are rejected, as are whitespace, quotes, backslashes, $ and %: the path is pasted verbatim into the kubelet argument files, where systemd would read $ and % as expansions."
+          "description": "It names the credential provider config file itself.",
+          "allOf": [
+            { "$ref": "#/definitions/kubeletArgumentPath" }
+          ]
         },
         "configFormat": {
           "enum": [
@@ -133,19 +152,23 @@
       "properties": {
         "hostRoot": {
           "description": "Where the host filesystem is mounted inside the installer container. It becomes a volume mountPath, so / is rejected: a container cannot have the host root mounted over its own root filesystem, and kubelet refuses the pod rather than the chart refusing the value.",
-          "type": "string",
-          "pattern": "^/([^/]+/)*[^/]+$"
+          "allOf": [
+            { "$ref": "#/definitions/filePath" }
+          ]
         },
         "sleep": {
           "type": "boolean"
         },
         "installedMarker": {
-          "description": "Absolute host path naming a file, not a directory: / and any trailing slash are rejected, because the installer writes and deletes this path and would fail partway through a run. Not on tmpfs either: /run and /var/run are the same tmpfs on a systemd node and are emptied at every boot, which makes a rebooted node read as never installed and restarts its kubelet again on every boot.",
-          "type": "string",
-          "pattern": "^/([^/]+/)*[^/]+$",
-          "not": {
-            "pattern": "^/(var/)?run(/|$)"
-          }
+          "description": "The installer writes and deletes this path, so a directory would fail partway through a run. Not on tmpfs either: /run and /var/run are the same tmpfs on a systemd node and are emptied at every boot, which makes a rebooted node read as never installed and restarts its kubelet again on every boot.",
+          "allOf": [
+            { "$ref": "#/definitions/filePath" },
+            {
+              "not": {
+                "pattern": "^/(var/)?run(/|$)"
+              }
+            }
+          ]
         }
       }
     },
@@ -162,30 +185,23 @@
           "type": "string"
         },
         "systemdDropInPath": {
-          "description": "Absolute host path to the kubelet systemd drop-in file, or empty for the profile default. / and a trailing slash are rejected: it names a file.",
-          "type": "string",
-          "pattern": "^(/([^/]+/)*[^/]+)?$"
+          "description": "The kubelet systemd drop-in file.",
+          "allOf": [
+            { "$ref": "#/definitions/optionalFilePath" }
+          ]
         },
         "forceExecStartOverride": {
           "type": "boolean"
         },
         "k3sConfigDropInPath": {
-          "description": "Absolute host path to the k3s config drop-in file, or empty for the profile default. / and a trailing slash are rejected: it names a file.",
-          "type": "string",
-          "pattern": "^(/([^/]+/)*[^/]+)?$"
+          "description": "The k3s config drop-in file.",
+          "allOf": [
+            { "$ref": "#/definitions/optionalFilePath" }
+          ]
         },
-        "rke2ConfigDropInPath": {
-          "type": "string",
-          "pattern": "^(/([^/]+/)*[^/]+)?$"
-        },
-        "kubeletDefaultsPath": {
-          "type": "string",
-          "pattern": "^(/([^/]+/)*[^/]+)?$"
-        },
-        "microk8sArgsPath": {
-          "type": "string",
-          "pattern": "^(/([^/]+/)*[^/]+)?$"
-        }
+        "rke2ConfigDropInPath": { "$ref": "#/definitions/optionalFilePath" },
+        "kubeletDefaultsPath": { "$ref": "#/definitions/optionalFilePath" },
+        "microk8sArgsPath": { "$ref": "#/definitions/optionalFilePath" }
       }
     },
     "nodeAudienceRbac": {
