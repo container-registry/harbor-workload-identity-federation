@@ -1,0 +1,373 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "credential-provider-harbor values",
+  "type": "object",
+  "required": [
+    "registry",
+    "profile",
+    "image",
+    "installer",
+    "credentialProvider",
+    "kubelet",
+    "securityContext"
+  ],
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": [
+        "repository"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "profile": {
+      "description": "Decides the host paths and the kubelet wiring. custom requires credentialProvider.binDir and credentialProvider.configPath.",
+      "enum": [
+        "generic",
+        "eks",
+        "aws",
+        "k3s",
+        "k3d",
+        "kind",
+        "gke",
+        "custom"
+      ]
+    },
+    "registry": {
+      "type": "object",
+      "required": [
+        "host"
+      ],
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Harbor hostname that workloads pull from. Required."
+        },
+        "audience": {
+          "type": "string"
+        },
+        "matchImages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cacheDuration": {
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|\u00b5s|ms|s|m|h))+$",
+          "description": "Go duration, as kubelet parses it. 1h, 30m, 1h30m and 1.5h are all valid."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "credentialProvider": {
+      "type": "object",
+      "properties": {
+        "binaryName": {
+          "type": "string",
+          "pattern": "^([A-Za-z0-9_-]|\\.[A-Za-z0-9_-]|\\.\\.[A-Za-z0-9._-])[A-Za-z0-9._-]*$",
+          "description": "Plain filename. The installer rejects a path separator and the directory names . and .., so the pattern spells out the three ways a name can start without being one of them. Written without lookahead because Helm matches with RE2."
+        },
+        "binDir": {
+          "type": "string",
+          "pattern": "^(/([^/]+/)*[^/]+)?$",
+          "description": "Absolute host path, or empty to take the profile default. / and a trailing slash are rejected: the installer writes the provider binary inside this directory, and rejects a relative path."
+        },
+        "configPath": {
+          "type": "string",
+          "pattern": "^(/([^/]+/)*[^/]+)?$",
+          "description": "Absolute host path, or empty to take the profile default. It names the config file itself, so / and a trailing slash are rejected."
+        },
+        "configFormat": {
+          "enum": [
+            "",
+            "yaml",
+            "json"
+          ]
+        }
+      }
+    },
+    "installer": {
+      "type": "object",
+      "properties": {
+        "hostRoot": {
+          "description": "Where the host filesystem is mounted inside the installer container. It becomes a volume mountPath, so / is rejected: a container cannot have the host root mounted over its own root filesystem, and kubelet refuses the pod rather than the chart refusing the value.",
+          "type": "string",
+          "pattern": "^/([^/]+/)*[^/]+$"
+        },
+        "sleep": {
+          "type": "boolean"
+        },
+        "installedMarker": {
+          "description": "Absolute host path naming a file, not a directory: / and any trailing slash are rejected, because the installer writes and deletes this path and would fail partway through a run. Not on tmpfs either: /run and /var/run are the same tmpfs on a systemd node and are emptied at every boot, which makes a rebooted node read as never installed and restarts its kubelet again on every boot.",
+          "type": "string",
+          "pattern": "^/([^/]+/)*[^/]+$",
+          "not": {
+            "pattern": "^/(var/)?run(/|$)"
+          }
+        }
+      }
+    },
+    "kubelet": {
+      "type": "object",
+      "properties": {
+        "configure": {
+          "type": "boolean"
+        },
+        "restart": {
+          "type": "boolean"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "systemdDropInPath": {
+          "description": "Absolute host path to the kubelet systemd drop-in file, or empty for the profile default. / and a trailing slash are rejected: it names a file.",
+          "type": "string",
+          "pattern": "^(/([^/]+/)*[^/]+)?$"
+        },
+        "forceExecStartOverride": {
+          "type": "boolean"
+        },
+        "k3sConfigDropInPath": {
+          "description": "Absolute host path to the k3s config drop-in file, or empty for the profile default. / and a trailing slash are rejected: it names a file.",
+          "type": "string",
+          "pattern": "^(/([^/]+/)*[^/]+)?$"
+        }
+      }
+    },
+    "nodeAudienceRbac": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "annotations": {
+          "description": "Kubernetes annotations are string to string. A boolean or a number here renders an annotation the API server rejects.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "podAnnotations": {
+      "description": "Kubernetes annotations are string to string. A boolean or a number here renders an annotation the API server rejects.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "podLabels": {
+      "description": "Kubernetes labels are string to string. A boolean or a number here renders a label the API server rejects, and the DaemonSet never applies.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "updateStrategy": {
+      "type": "object",
+      "description": "Installing restarts kubelet, so an update has to roll one node at a time. Recreate, a larger maxUnavailable, or a nonzero maxSurge would take several kubelets down together.",
+      "properties": {
+        "type": {
+          "const": "RollingUpdate"
+        },
+        "rollingUpdate": {
+          "type": "object",
+          "properties": {
+            "maxUnavailable": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1
+            },
+            "maxSurge": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 0
+            }
+          }
+        }
+      }
+    },
+    "priorityClassName": {
+      "type": "string"
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "readinessProbe": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "securityContext": {
+      "type": "object",
+      "description": "The installer writes to the host filesystem and restarts kubelet, so privileged is not optional. Without it the pod starts and then fails on the node. The three fields below are the ones that contradict privileged: true, and each fails earlier and less legibly than a schema error. Anything else a cluster policy needs here still passes.",
+      "required": [
+        "privileged"
+      ],
+      "properties": {
+        "privileged": {
+          "const": true
+        },
+        "allowPrivilegeEscalation": {
+          "const": true,
+          "description": "false alongside privileged: true is a contradiction the API server rejects, so the DaemonSet never applies."
+        },
+        "runAsNonRoot": {
+          "const": false,
+          "description": "The image runs as root. true makes kubelet refuse to start the container, and the node stays uninstalled with no event that names this value."
+        },
+        "runAsUser": {
+          "const": 0,
+          "description": "Any other UID cannot write the binary, the config or the kubelet drop-in to the node."
+        }
+      }
+    },
+    "extraEnv": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object"
+    },
+    "nodeSelector": {
+      "description": "Kubernetes nodeSelector is string to string, matched against node labels.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "affinity": {
+      "type": "object"
+    },
+    "tolerations": {
+      "type": "array"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "credentialProvider": {
+            "required": [
+              "binDir",
+              "configPath"
+            ],
+            "properties": {
+              "binDir": {
+                "pattern": "^/.+"
+              },
+              "configPath": {
+                "pattern": "^/.+"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

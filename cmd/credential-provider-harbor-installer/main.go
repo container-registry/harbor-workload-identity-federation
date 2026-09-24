@@ -25,6 +25,32 @@ const (
 
 	configAPIVersion   = "kubelet.config.k8s.io/v1"
 	providerAPIVersion = "credentialprovider.kubelet.k8s.io/v1"
+
+	// markerInstallIDPrefix starts the first line of the marker file. The
+	// readiness probe greps for this prefix plus the install ID of the pod it
+	// runs in, so a marker left behind by a different revision cannot pass it.
+	markerInstallIDPrefix = "install-id="
+
+	// markerKubeletRestartedPrefix records whether kubelet was restarted for
+	// the install named on the first line. A run with RESTART_KUBELET=false
+	// writes false, so a later run that turns restarts back on can tell that
+	// the node still has to pick the flags up even though nothing else
+	// changed.
+	markerKubeletRestartedPrefix = "kubelet-restarted="
+
+	// standaloneInstallID is the install ID used when the installer runs
+	// outside the chart, which is the only way INSTALL_ID goes unset.
+	standaloneInstallID = "standalone"
+
+	// defaultInstalledMarker is where a finished node is recorded. It has to
+	// live on persistent storage. /var/run is /run on systemd hosts, which is
+	// tmpfs and is emptied at every boot, so a marker kept there would be gone
+	// after a reboot the node did not need: kubelet comes back up with the
+	// drop-in already in effect, but the missing marker reads as "never
+	// installed" and the installer restarts kubelet for a configuration
+	// kubelet already started against, leaving the node NotReady for the
+	// length of that restart on every single boot.
+	defaultInstalledMarker = "/var/lib/credential-provider-harbor/install-marker"
 )
 
 type options struct {
@@ -49,6 +75,7 @@ type options struct {
 	PreserveECRProvider   bool
 	SleepForever          bool
 	InstalledMarker       string
+	InstallID             string
 }
 
 type profileDefaults struct {
@@ -187,7 +214,8 @@ func optionsFromEnv() (options, error) {
 		K3sConfigDropInPath:   env("K3S_CONFIG_DROP_IN_PATH", defaults.K3sConfigDropInPath),
 		PreserveECRProvider:   preserveECR,
 		SleepForever:          boolEnv("SLEEP_FOREVER", false),
-		InstalledMarker:       env("INSTALLED_MARKER", "/var/run/credential-provider-harbor-installed"),
+		InstalledMarker:       env("INSTALLED_MARKER", defaultInstalledMarker),
+		InstallID:             env("INSTALL_ID", standaloneInstallID),
 	}, nil
 }
 
@@ -229,6 +257,15 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 }
 
 func run(opts options) error {
+	return install(opts, restartKubelet)
+}
+
+// install does the node install, with the kubelet restart passed in. The marker
+// the readiness probe greps is written last, after the restart has returned,
+// and the seam is here so a test can prove that ordering rather than argue it:
+// a restart that takes minutes, or never succeeds, must not leave a marker
+// behind that reports the pod Ready and lets the rollout move to the next node.
+func install(opts options, restart func(options) error) error {
 	fmt.Println("[INFO] === credential-provider-harbor installer ===")
 	fmt.Printf("[INFO] Version: %s\n", version)
 	fmt.Printf("[INFO] Profile: %s\n", opts.Profile)
@@ -238,8 +275,26 @@ func run(opts options) error {
 	fmt.Printf("[INFO] Host config: %s\n", opts.ConfigPath)
 	fmt.Printf("[INFO] Kubelet configure: %t\n", opts.ConfigureKubelet)
 	fmt.Printf("[INFO] Kubelet restart: %t\n", opts.RestartKubelet)
+	fmt.Printf("[INFO] Install ID: %s\n", opts.InstallID)
 
 	if err := validateOptions(opts); err != nil {
+		return err
+	}
+
+	// What the node last completed, read before the marker is cleared.
+	previous, err := readMarker(opts)
+	if err != nil {
+		return err
+	}
+	if previous.InstallID != "" {
+		fmt.Printf("[INFO] Previous install ID on this node: %s\n", previous.InstallID)
+	}
+
+	// Readiness means "this pod finished its own install", so the marker has to
+	// go before any work starts. Otherwise the probe passes off the previous
+	// revision's marker and the rollout advances to the next node while this
+	// installer is still working, or crash-looping.
+	if err := removeMarker(opts); err != nil {
 		return err
 	}
 
@@ -262,16 +317,25 @@ func run(opts options) error {
 	}
 	changed = changed || kubeletChanged
 
-	if err := touchMarker(opts); err != nil {
-		return err
+	if !changed {
+		fmt.Println("[INFO] No host changes detected")
 	}
 
-	if changed {
-		if err := restartKubelet(opts); err != nil {
+	// Carried over only when this run is the same install as the one that
+	// wrote the marker. A different install ID rewrites the node's flags, so
+	// whatever restart happened for the previous one no longer counts.
+	restarted := previous.KubeletRestarted && previous.InstallID == opts.InstallID
+	if kubeletRestartNeeded(changed, previous, opts) {
+		if err := restart(opts); err != nil {
 			return err
 		}
-	} else {
-		fmt.Println("[INFO] No host changes detected")
+		restarted = opts.RestartKubelet
+	}
+
+	// Last, and only once the kubelet restart has returned. The probe turns the
+	// pod Ready off this file, and Ready has to mean the node is done.
+	if err := writeMarker(opts, restarted); err != nil {
+		return err
 	}
 
 	fmt.Println("[INFO] Installation complete")
@@ -286,12 +350,21 @@ func validateOptions(opts options) error {
 		return fmt.Errorf("BINARY_NAME must be a plain filename: %q", opts.BinaryName)
 	}
 
-	paths := map[string]string{
-		"HOST_ROOT":        opts.HostRoot,
+	// HOST_ROOT is the one path that may be the root itself: a run outside a
+	// container passes "/". Everything else names something the installer
+	// creates or overwrites inside a parent directory, so "/" or a trailing
+	// slash there would have it copy the binary over the host root, or write
+	// the config and the marker at a path that is a directory — an error
+	// partway through the run instead of before it touched anything.
+	named := map[string]string{
 		"SOURCE_BINARY":    opts.SourceBinary,
 		"BIN_DIR":          opts.BinDir,
 		"CONFIG_PATH":      opts.ConfigPath,
 		"INSTALLED_MARKER": opts.InstalledMarker,
+	}
+	paths := map[string]string{"HOST_ROOT": opts.HostRoot}
+	for name, path := range named {
+		paths[name] = path
 	}
 	for name, path := range paths {
 		if path == "" {
@@ -300,6 +373,23 @@ func validateOptions(opts options) error {
 		if !filepath.IsAbs(path) {
 			return fmt.Errorf("%s must be an absolute path: %q", name, path)
 		}
+	}
+	for name, path := range named {
+		if path == "/" || strings.HasSuffix(path, "/") {
+			return fmt.Errorf("%s must name a path inside a parent directory, not %q", name, path)
+		}
+	}
+	// The readiness probe matches the marker's first line whole, so an install
+	// ID that spans lines would write a marker that can never satisfy it, and
+	// one padded with whitespace is a line no operator can read back reliably.
+	if opts.InstallID == "" {
+		return errors.New("INSTALL_ID cannot be empty")
+	}
+	if strings.ContainsAny(opts.InstallID, "\r\n") {
+		return fmt.Errorf("INSTALL_ID must be a single line: %q", opts.InstallID)
+	}
+	if strings.TrimSpace(opts.InstallID) != opts.InstallID {
+		return fmt.Errorf("INSTALL_ID must not start or end with whitespace: %q", opts.InstallID)
 	}
 	if opts.ConfigFormat != "yaml" && opts.ConfigFormat != "json" {
 		return fmt.Errorf("CONFIG_FORMAT must be yaml or json, got %q", opts.ConfigFormat)
@@ -491,6 +581,26 @@ image-credential-provider-config: %q
 	return changed, nil
 }
 
+// kubeletRestartNeeded reports whether kubelet still has to pick up this
+// install. Host changes are the obvious case. The other one is a node whose
+// last completed install ID differs from this one: every host file can already
+// match while the running kubelet has never been started against them. That is
+// what makes a staged rollout work — install everywhere with
+// kubelet.restart=false, then turn it on and let maxUnavailable=1 take the
+// kubelets down one at a time.
+//
+// The third case is that same staged rollout run without the chart, where the
+// install ID does not change between the two runs because nothing derives it
+// from the values. The marker records whether kubelet was restarted, so
+// turning restarts on finishes the job even when the ID and every host file
+// stayed as they were.
+func kubeletRestartNeeded(hostChanged bool, previous markerState, opts options) bool {
+	if hostChanged || previous.InstallID != opts.InstallID {
+		return true
+	}
+	return opts.RestartKubelet && !previous.KubeletRestarted
+}
+
 func restartKubelet(opts options) error {
 	if !opts.RestartKubelet {
 		fmt.Println("[WARN] Kubelet restart disabled. Restart or roll nodes before testing image pulls.")
@@ -547,15 +657,110 @@ func detectK3sService(opts options, fallback string) string {
 	return "k3s"
 }
 
-func touchMarker(opts options) error {
-	marker := hostPath(opts, opts.InstalledMarker)
-	if err := os.MkdirAll(filepath.Dir(marker), 0755); err != nil {
-		return fmt.Errorf("create marker directory: %w", err)
+// markerState is what the host marker says about the install the node last
+// completed. An empty InstallID means no install has completed here.
+type markerState struct {
+	InstallID string
+	// KubeletRestarted is false when the run that wrote this marker was told
+	// not to restart kubelet, which leaves the node holding the files without
+	// kubelet running against them.
+	KubeletRestarted bool
+}
+
+// readMarker returns what the host marker records, or the zero value when no
+// node install has completed. A marker that predates the install ID, or that
+// is otherwise unreadable, counts as no install: the run then redoes the work
+// rather than trusting a file it cannot interpret.
+func readMarker(opts options) (markerState, error) {
+	data, err := os.ReadFile(hostPath(opts, opts.InstalledMarker))
+	if errors.Is(err, os.ErrNotExist) {
+		return markerState{}, nil
 	}
-	if err := os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0644); err != nil {
-		return fmt.Errorf("write marker file: %w", err)
+	if err != nil {
+		return markerState{}, fmt.Errorf("read marker file: %w", err)
+	}
+	// Read exactly what `grep -qxF install-id=<id>` would match: the whole
+	// first line, byte for byte. Trimming here would make the installer and the
+	// readiness probe disagree about an ID with surrounding whitespace — the
+	// probe would pass on the marker while the installer read a different ID,
+	// decided the node was new, and restarted kubelet on every container start.
+	firstLine, rest, _ := strings.Cut(string(data), "\n")
+	id, ok := strings.CutPrefix(firstLine, markerInstallIDPrefix)
+	if !ok {
+		return markerState{}, nil
+	}
+	// A marker written before this line existed says nothing about the
+	// restart, and reading that as "not restarted" would restart kubelet once
+	// on every node the first time this version runs. Absent means restarted.
+	restarted := true
+	for line := range strings.SplitSeq(rest, "\n") {
+		if value, ok := strings.CutPrefix(line, markerKubeletRestartedPrefix); ok {
+			restarted = value == "true"
+			break
+		}
+	}
+	return markerState{InstallID: id, KubeletRestarted: restarted}, nil
+}
+
+// removeMarker clears the host marker so that nothing can report this node as
+// installed until this run has finished.
+func removeMarker(opts options) error {
+	marker := hostPath(opts, opts.InstalledMarker)
+	if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove marker file: %w", err)
 	}
 	return nil
+}
+
+// writeMarker records which install this node completed and when.
+//
+// Written to a temporary file in the marker's own directory and renamed over
+// it, because the readiness probe reads the first line. A write straight into
+// the live marker that fails partway through - a full filesystem is the usual
+// way - can land that first line and nothing else, which is all the probe
+// needs to report the node done while the installer returns an error.
+func writeMarker(opts options, kubeletRestarted bool) error {
+	marker := hostPath(opts, opts.InstalledMarker)
+	dir := filepath.Dir(marker)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create marker directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, filepath.Base(marker)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create marker file: %w", err)
+	}
+	// Named now so every failure below can remove it: a crash between here and
+	// the rename would otherwise leave the directory collecting one orphan per
+	// attempt.
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(markerContent(opts, kubeletRestarted, time.Now().UTC())); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("write marker file: %w", err)
+	}
+	// CreateTemp opens at 0600, and the marker is world-readable so that a
+	// kubectl debug pod can check a node without being root.
+	if err := tmp.Chmod(0644); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("set marker file mode: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("close marker file: %w", err)
+	}
+	if err := os.Rename(tmpName, marker); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("move marker file into place: %w", err)
+	}
+	return nil
+}
+
+func markerContent(opts options, kubeletRestarted bool, completedAt time.Time) []byte {
+	return fmt.Appendf(nil, "%s%s\n%s%t\ncompleted-at=%s\n",
+		markerInstallIDPrefix, opts.InstallID,
+		markerKubeletRestartedPrefix, kubeletRestarted,
+		completedAt.Format(time.RFC3339))
 }
 
 func harborProvider(opts options) credentialProvider {

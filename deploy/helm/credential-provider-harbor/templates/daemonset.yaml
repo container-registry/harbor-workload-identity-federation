@@ -9,16 +9,32 @@ spec:
   selector:
     matchLabels:
       {{- include "credential-provider-harbor.selectorLabels" . | nindent 6 }}
+  {{- with .Values.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   template:
     metadata:
+      {{- /* Selector labels win, so a podLabels entry cannot leave the pod
+             template not matching spec.selector. Merged rather than appended,
+             because a duplicate YAML key is rejected on apply. `default dict`
+             covers `podLabels:` written with no value, which reaches the
+             template as nil and makes deepCopy fail on a reflect error that
+             names neither the value nor the mistake. */}}
       labels:
-        {{- include "credential-provider-harbor.selectorLabels" . | nindent 8 }}
+        {{- $selector := include "credential-provider-harbor.selectorLabels" . | fromYaml }}
+        {{- $podLabels := deepCopy (.Values.podLabels | default dict) }}
+        {{- toYaml (merge $selector $podLabels) | nindent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
       hostPID: true
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       serviceAccountName: {{ include "credential-provider-harbor.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -29,69 +45,69 @@ spec:
         image: "{{ .Values.image.repository }}:{{ include "credential-provider-harbor.imageTag" . }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         securityContext:
-          privileged: true
+          {{- toYaml .Values.securityContext | nindent 10 }}
         env:
-        - name: PROFILE
-          value: {{ .Values.profile | quote }}
-        - name: HOST_ROOT
-          value: {{ .Values.installer.hostRoot | quote }}
-        - name: SOURCE_BINARY
-          value: /usr/local/bin/credential-provider-harbor
+        {{- include "credential-provider-harbor.installerEnv" . | nindent 8 }}
         - name: SLEEP_FOREVER
           value: {{ .Values.installer.sleep | quote }}
-        - name: BINARY_NAME
-          value: {{ .Values.credentialProvider.binaryName | quote }}
-        - name: REGISTRY_HOST
-          value: {{ required "registry.host is required" .Values.registry.host | quote }}
-        - name: REGISTRY_AUDIENCE
-          value: {{ include "credential-provider-harbor.audience" . | quote }}
-        - name: REGISTRY_USERNAME
-          value: {{ .Values.registry.username | quote }}
-        - name: MATCH_IMAGES
-          value: {{ default .Values.registry.host (join "," .Values.registry.matchImages) | quote }}
-        - name: CACHE_DURATION
-          value: {{ .Values.registry.cacheDuration | quote }}
-        - name: BIN_DIR
-          value: {{ .Values.credentialProvider.binDir | quote }}
-        - name: CONFIG_PATH
-          value: {{ .Values.credentialProvider.configPath | quote }}
-        - name: CONFIG_FORMAT
-          value: {{ .Values.credentialProvider.configFormat | quote }}
-        - name: CONFIGURE_KUBELET
-          value: {{ .Values.kubelet.configure | quote }}
-        - name: RESTART_KUBELET
-          value: {{ .Values.kubelet.restart | quote }}
-        - name: KUBELET_SERVICE
-          value: {{ .Values.kubelet.serviceName | quote }}
-        - name: SYSTEMD_DROP_IN_PATH
-          value: {{ .Values.kubelet.systemdDropInPath | quote }}
-        - name: FORCE_KUBELET_EXECSTART
-          value: {{ .Values.kubelet.forceExecStartOverride | quote }}
-        - name: K3S_CONFIG_DROP_IN_PATH
-          value: {{ .Values.kubelet.k3sConfigDropInPath | quote }}
-        {{- with .Values.extraEnv }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        - name: INSTALLED_MARKER
+          value: {{ .Values.installer.installedMarker | quote }}
+        - name: INSTALL_ID
+          value: {{ include "credential-provider-harbor.installID" . | quote }}
         command:
         - /usr/local/bin/install-credential-provider.sh
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
+        {{- if .Values.readinessProbe.enabled }}
+        {{- /* Matching the install ID, not just the file: the marker lives on
+               the host and outlives the pod, so `test -f` would report this pod
+               Ready off the previous revision's marker before its own installer
+               had done anything, and keep reporting Ready while it crash-looped.
+               The installer deletes the marker when it starts and rewrites it
+               only after the kubelet restart returns, so a passing probe means
+               this node finished this revision. */}}
+        readinessProbe:
+          exec:
+            command:
+              - grep
+              - -qxF
+              - {{ printf "install-id=%s" (include "credential-provider-harbor.installID" .) | quote }}
+              - {{ include "credential-provider-harbor.markerPath" . | quote }}
+          initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+        {{- end }}
         volumeMounts:
         - name: host-root
           mountPath: {{ .Values.installer.hostRoot | quote }}
-        - name: host-run
-          mountPath: {{ printf "%s/var/run" (.Values.installer.hostRoot | trimSuffix "/") | quote }}
+        {{- $markerDir := include "credential-provider-harbor.markerDir" . }}
+        {{- if ne $markerDir "/" }}
+        {{- /* The marker has to survive the pod and the node's next boot, and
+               host-root is the node's root filesystem without its submounts.
+               Mounting the marker's own directory keeps the write on the node
+               wherever it is pointed, including the images that carry /var as a
+               mount of its own. */}}
+        - name: marker-dir
+          mountPath: {{ printf "%s%s" (.Values.installer.hostRoot | trimSuffix "/") $markerDir | quote }}
+        {{- end }}
       volumes:
       - name: host-root
         hostPath:
           path: /
           type: Directory
-      - name: host-run
+      {{- if ne $markerDir "/" }}
+      - name: marker-dir
         hostPath:
-          path: /var/run
+          path: {{ $markerDir | quote }}
           type: DirectoryOrCreate
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.tolerations }}
