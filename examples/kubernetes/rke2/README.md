@@ -1,22 +1,12 @@
 # RKE2
 
-One `helm install` on the node side, plus an API server setting on the server nodes.
+One `helm install`, on server and worker nodes alike.
 
 RKE2 runs kubelet inside the `rke2-agent` process rather than as its own systemd unit, so there is no `kubelet.service` to drop a file into. The `rke2` profile writes `/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml` instead, which is where RKE2 reads `kubelet-arg` from, and restarts the supervisor so it takes effect. [`config.yaml`](config.yaml) shows the file it writes.
 
-## The API Server Has To Accept the Audience
+## Audience
 
-kubelet asks the API server for a token whose audience is `registry.audience`. The API server only mints audiences listed in `--api-audiences`, so if yours is not there the request is refused before the provider is called at all, and no amount of correct node setup fixes it.
-
-On RKE2 this is a server-node setting, and the chart does not touch it:
-
-```yaml
-# /etc/rancher/rke2/config.yaml.d/99-harbor-audience.yaml, on every server node
-kube-apiserver-arg:
-  - "api-audiences=https://kubernetes.default.svc.cluster.local,harbor.example.com"
-```
-
-Restart `rke2-server` after adding it. Keep the default cluster audience in the list; dropping it breaks in-cluster service account tokens.
+kubelet asks the API server for a token whose audience is `registry.audience`. What decides whether it gets one is the node audience RBAC, which the chart creates. There is no server-node setting to add, and in particular the audience does not go in `kube-apiserver-arg` as `--api-audiences`: that flag lists what the API server accepts on tokens presented to it, not what it issues.
 
 ## Install
 

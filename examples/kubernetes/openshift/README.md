@@ -24,10 +24,9 @@ Applying it drains and reboots each node in the pool, the same as any other Mach
 
 That still is not enough on its own. The cluster-side setup is the same as everywhere else and none of it is optional:
 
-- The API server has to accept your Harbor audience. kubelet asks for a token with that audience, and an API server that does not list it refuses before the provider runs.
-- `system:nodes` needs `request-serviceaccounts-token-audience` on that audience. [`../rbac-audience.yaml`](../rbac-audience.yaml) is the standalone manifest; on other distributions the chart creates it, and here nothing does.
+- `system:nodes` needs `request-serviceaccounts-token-audience` on your Harbor audience, or the API server refuses the token request before the provider runs. [`../rbac-audience.yaml`](../rbac-audience.yaml) is the standalone manifest; on other distributions the chart creates it, and here nothing does.
 
-See the [index](../README.md) for both.
+See the [index](../README.md).
 
 This is the same shape as the [Talos example](../../talos/), where the binary ships as a system extension and kubelet is wired through machine config. An immutable OS wants the provider delivered with the OS, not installed into it.
 

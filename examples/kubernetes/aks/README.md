@@ -10,15 +10,11 @@ AKS also has no supported API for adding arbitrary kubelet flags. [Custom node c
 
 So the `aks` profile edits `/etc/default/kubelet` directly. It rewrites the active `KUBELET_FLAGS` assignment to carry the two flags, keeps every other flag in place, and backs the file up first. Running it again with different paths replaces its own earlier values rather than appending a second copy.
 
-## The API Server Has To Accept the Audience
+## Audience
 
-kubelet asks the API server for a token whose audience is `registry.audience`. AKS sets `--api-audiences` to the cluster's service account issuer and does not expose it as a setting, so pick an audience the API server will actually mint.
+kubelet asks the API server for a token whose audience is `registry.audience`, and on AKS as anywhere else that request is authorized by the node audience RBAC the chart creates. AKS does not expose `--api-audiences`, and does not need to: that flag governs the tokens the API server accepts, not the ones it issues. Any agreed string works as the audience, as long as the Harbor Federated IDP is configured with the same one.
 
-```bash
-kubectl create token default --audience=harbor.example.com --duration=10m
-```
-
-If that fails, the audience is not accepted and no amount of correct node setup will help. AKS clusters with [OIDC issuer](https://learn.microsoft.com/en-us/azure/aks/use-oidc-issuer) enabled accept the issuer URL as an audience; use that as `registry.audience`, and configure the Harbor Federated IDP with the same string.
+Harbor also has to reach the cluster's signing keys to validate those tokens, so enable the [OIDC issuer](https://learn.microsoft.com/en-us/azure/aks/use-oidc-issuer) on the cluster and point the Federated IDP at that URL.
 
 ## Install
 
