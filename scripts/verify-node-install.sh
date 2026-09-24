@@ -84,8 +84,11 @@ LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib"
 node_program() {
   local path="${LIB_DIR}/$1"
   if [ ! -r "${path}" ]; then
-    red "cannot read ${path}"
-    echo "  Run this from a checkout: the node-side programs live in scripts/lib/."
+    # Both lines go to stderr: this function is read through a command
+    # substitution, which would otherwise swallow the explanation and leave
+    # the run ending on nothing.
+    red "cannot read ${path}" >&2
+    echo "  Run this from a checkout: the node-side programs live in scripts/lib/." >&2
     exit 1
   fi
   cat "${path}"
@@ -138,12 +141,18 @@ scan_node_kubelet_config() {
 # Commented-out lines are dropped first. These files ship with commented
 # examples, and counting one as an active setting reports a node as configured
 # while kubelet is given nothing.
+#
+# The last match wins, not the first. The scan reads config.yaml before
+# config.yaml.d/, and on k3s and RKE2 the drop-in replaces the key, so the
+# first match is whatever the node was set to before the installer ran. A
+# repeated flag on a kubelet command line works the same way: the last one is
+# the one kubelet uses.
 extract_setting() {
   local key=$1 text=$2
   printf '%s\n' "${text}" | sed '/^[[:space:]]*#/d' | sed -n "
     s/.*${key}[=:][[:space:]]*\"\([^\"]*\)\".*/\1/p
     s/.*${key}[=:][[:space:]]*\([^\"[:space:]][^\"[:space:]]*\).*/\1/p
-  " | head -1 || true
+  " | tail -1 || true
 }
 
 report() {
