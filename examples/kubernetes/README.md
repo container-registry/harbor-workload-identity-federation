@@ -35,7 +35,7 @@ Most failures are one of these, and they are easier to check than to debug.
 
 If you set this up from an earlier version of these pages, you will have your registry in the API server's `--api-audiences` as well. Take it out. That flag lists the audiences the API server accepts on tokens presented to it, so leaving your registry there means a token Harbor is given also works as a cluster credential.
 
-**3. Harbor expects the same audience string.** The audience is just an agreed identifier. It does not have to be a domain. What matters is that the same value appears in the kubelet config, the RBAC, and the Harbor Federated IDP. Using the registry hostname makes it obvious who the token is for, which is why the examples do that.
+**3. Harbor expects the same audience string.** The audience is just an agreed identifier. It does not have to be a domain. What matters is that the same value appears in the kubelet config, the RBAC, and the Harbor Trusted Issuer. Using the registry hostname makes it obvious who the token is for, which is why the examples do that.
 
 ## Harbor Setup
 
@@ -45,7 +45,7 @@ Find the cluster's service account issuer:
 kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
 ```
 
-Create a Harbor Federated IDP for that issuer. If the issuer is publicly reachable, as on EKS and GKE, Harbor can validate online. If it is not, as on a local or private cluster, fetch the keys and configure the IDP with inline JWKS:
+Add that issuer to Harbor as a Trusted Issuer. If the issuer is publicly reachable, as on EKS and GKE, Harbor can validate online. If it is not, as on a local or private cluster, fetch the keys and configure the Trusted Issuer with inline JWKS:
 
 ```bash
 kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)"
@@ -61,7 +61,7 @@ sub == system:serviceaccount:<namespace>:<service-account>
 
 For the default service account in the default namespace, `sub` is `system:serviceaccount:default:default`.
 
-The Harbor side is documented in full: [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/) covers the IDP, the JWKS handling and the claim rules, and [Authenticating a Workload with Federated Identity](https://container-registry.com/docs/2.16/user-manual/images/authenticating-a-workload-with-federated-identity/) covers presenting the token.
+The Harbor side is documented in full: [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/) covers the Trusted Issuer, the JWKS handling and the claim rules, and [Authenticating a Workload with Federated Identity](https://container-registry.com/docs/2.16/user-manual/images/authenticating-a-workload-with-federated-identity/) covers presenting the token.
 
 ## Shared Files
 

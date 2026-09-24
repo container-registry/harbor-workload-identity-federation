@@ -46,7 +46,7 @@ The cluster's issuer is the EKS OIDC provider URL:
 aws eks describe-cluster --name <cluster> --query cluster.identity.oidc.issuer --output text
 ```
 
-That URL is publicly reachable, so the Harbor Federated IDP can validate tokens online. Point it at `<issuer>/.well-known/openid-configuration` and set the audience to the value in `registry.audience`.
+That URL is publicly reachable, so the Harbor Trusted Issuer can validate tokens online. Point it at `<issuer>/.well-known/openid-configuration` and set the audience to the value in `registry.audience`.
 
 ## Check It Took
 

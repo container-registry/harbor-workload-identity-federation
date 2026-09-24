@@ -13,6 +13,15 @@ Repository with examples demonstrating how to use Harbor/8gears Container Regist
 - **Simplified rotation**: No secret rotation required since tokens are short-lived
 - **Audit trail**: Better traceability of which workload accessed the registry
 
+## Documentation
+
+The Harbor side of this feature is documented at https://container-registry.com/docs/:
+
+- [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/) — configuring the Trusted Issuer, JWKS validation and key rotation, claim rules
+- [Authenticating a Workload with Federated Identity](https://container-registry.com/docs/2.16/user-manual/images/authenticating-a-workload-with-federated-identity/) — presenting a token as a registry credential
+
+This repository holds the runnable parts: the kubelet credential provider, the installer, the Helm chart, the per-distribution guides, and the GitHub Actions and GitLab CI examples.
+
 ## Supported Identity Providers
 
 - GitHub Actions
@@ -279,16 +288,16 @@ a chart-vX.Y.Z release  oci://8gears.container-registry.com/8gcr/credential-prov
 
 ## GitHub Actions Example
 
-This example demonstrates how to authenticate to Harbor from a GitHub Actions workflow using OIDC tokens.
+This example demonstrates how to authenticate to Harbor from a GitHub Actions workflow using OIDC tokens. For the Harbor-side configuration, see [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).
 
 ### Prerequisites
 
-1. **Harbor Setup**: Configure a Federated Identity Provider in Harbor:
+1. **Harbor Setup**: Configure a Trusted Issuer in Harbor:
    - OpenID Configuration URL: `https://token.actions.githubusercontent.com/.well-known/openid-configuration`
    - JWKS URI: Automatically discovered
    - Issuer: Automatically discovered
 
-   ![Harbor Federated IDP Setup](images/harbor-federated-idp-setup.png)
+   ![Harbor Trusted Issuer Setup](images/harbor-federated-idp-setup.png)
 
 2. **Robot Account**: Create a federated robot account in Harbor with claim rules matching your GitHub repository:
    - `iss`: `https://token.actions.githubusercontent.com`
@@ -344,7 +353,7 @@ See full example workflow: [`examples/github-actions/example_1.yml`](examples/gi
 
 1. **Permissions**: The workflow must have `id-token: write` permission to request OIDC tokens.
 
-2. **Audience**: The `audience` parameter in the token request must match the audience configured in your Harbor Federated Identity Provider (typically your registry domain).
+2. **Audience**: The `audience` parameter in the token request must match the audience configured in your Harbor Trusted Issuer (typically your registry domain).
 
 3. **Username**: The username for `docker login` is not used for authentication (can be any value like `not-relevant`). Authentication is based solely on the JWT token.
 
@@ -442,7 +451,7 @@ This example demonstrates how to authenticate to Harbor from a GitLab CI pipelin
 
 ### Prerequisites
 
-1. **Harbor Setup**: Configure a Federated Identity Provider in Harbor:
+1. **Harbor Setup**: Configure a Trusted Issuer in Harbor:
    - OpenID Configuration URL: `https://gitlab.com/.well-known/openid-configuration`
    - JWKS URI: Automatically discovered 
    - Issuer: Automatically discovered
@@ -486,7 +495,7 @@ See full example pipeline: [`examples/gitlab-ci/.gitlab-ci.yml`](examples/gitlab
 
 1. **id_tokens**: GitLab CI uses the `id_tokens` keyword to request OIDC tokens. The token is automatically available as `$ID_TOKEN`.
 
-2. **Audience**: The `aud` field under `id_tokens` must match the audience configured in your Harbor Federated Identity Provider.
+2. **Audience**: The `aud` field under `id_tokens` must match the audience configured in your Harbor Trusted Issuer.
 
 3. **Username**: The username for `docker login` is not used for authentication (can be any value like `not-relevant`). Authentication is based solely on the JWT token.
 
@@ -636,7 +645,7 @@ kubectl apply -f examples/kubernetes/rbac-audience.yaml
 # 4. Get JWKS for Harbor configuration
 kubectl get --raw /openid/v1/jwks | jq .
 
-# 5. Configure Harbor Federated IDP with the JWKS
+# 5. Configure the Harbor Trusted Issuer with the JWKS
 # 6. Create robot account with claim rules
 
 # 7. Deploy test pod
@@ -752,7 +761,7 @@ spec:
    kubectl get --raw /openid/v1/jwks | jq .
    ```
 
-2. **Create Federated IDP in Harbor:**
+2. **Create a Trusted Issuer in Harbor:**
    - Issuer: `https://kubernetes.default.svc.cluster.local`
    - Audience: `<your-registry-domain>`
    - JWKS: Paste the JSON output
@@ -808,7 +817,7 @@ spec:
 
 2. **RBAC for Audiences**: The `request-serviceaccounts-token-audience` verb authorizes which audiences kubelets can request tokens for.
 
-3. **JWKS Rotation**: Recreating the cluster generates new signing keys. Update Harbor's Federated IDP with the new JWKS.
+3. **JWKS Rotation**: Recreating the cluster generates new signing keys. Update Harbor's Trusted Issuer with the new JWKS.
 
 4. **Kubernetes 1.33**: You have to turn on the `ServiceAccountNodeAudienceRestriction` and `KubeletServiceAccountTokenForCredentialProviders` feature gates yourself. The chart sets `kubeVersion: ">=1.34.0-0"` and will not install below 1.34, so on 1.33 install the binary and config by hand; see [Direct Binary](#direct-binary).
 
@@ -828,6 +837,8 @@ spec:
 ---
 
 ## Security Considerations
+
+See also the security notes on the [Federated Identity Provider page](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).
 
 - Tokens are short-lived (typically 5-10 minutes)
 - Each pipeline/workflow run gets a unique token

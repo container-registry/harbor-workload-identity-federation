@@ -5,7 +5,7 @@ How to get help with the Harbor Federated Robot Accounts credential provider.
 ## Documentation
 
 - Feature documentation: https://container-registry.com/docs/
-- Federated Identity Provider setup (Harbor side): https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/
+- Trusted Issuer setup (Harbor side): https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/
 - Authenticating a workload: https://container-registry.com/docs/2.16/user-manual/images/authenticating-a-workload-with-federated-identity/
 
 The quick guides in this repository cover the Kubernetes side: installing `credential-provider-harbor` on nodes and wiring up kubelet.

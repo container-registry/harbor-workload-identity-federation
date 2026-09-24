@@ -27,7 +27,7 @@ and the kubelet is wired through `machine.kubelet.credentialProviderConfig`.
 
 Placeholders used below: `harbor.example.com` (the Harbor host, used here as the
 **audience** too), `<cluster-service-account-issuer>`, `<project>`/`<image>`.
-See the [root README](../../README.md) for the full Harbor Federated IDP
+See the [root README](../../README.md) for the full Harbor Trusted Issuer
 reference and per-provider JWT claim tables.
 
 > [!NOTE]
@@ -35,7 +35,7 @@ reference and per-provider JWT claim tables.
 > string — it does **not** have to be a domain. The only hard rule is that the
 > **same value** appears in all three places: the kubelet
 > `tokenAttributes.serviceAccountTokenAudience`, the node-audience RBAC
-> `resources:` entry, and what the Harbor Federated IDP expects. This example
+> `resources:` entry, and what the Harbor Trusted Issuer expects. This example
 > uses the Harbor host `harbor.example.com` as that value because it makes the
 > token's intended recipient obvious; any consistent string works.
 
@@ -47,13 +47,13 @@ Find the cluster's service account issuer:
 kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
 ```
 
-Create a Harbor Federated IDP for that issuer. When the issuer is not publicly
+Add that issuer to Harbor as a Trusted Issuer. When the issuer is not publicly
 reachable (a common case for on-prem/private clusters), use **offline JWKS
-validation**: fetch the cluster's public keys and paste them into the IDP as
+validation**: fetch the cluster's public keys and paste them into the Trusted Issuer as
 inline JWKS, so Harbor never has to call the API server.
 
 ```bash
-# JWKS to paste into the Harbor IDP (inline / offline validation)
+# JWKS to paste into the Harbor Trusted Issuer (inline / offline validation)
 kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)"
 ```
 

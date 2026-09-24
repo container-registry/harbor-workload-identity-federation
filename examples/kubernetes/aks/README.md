@@ -12,9 +12,9 @@ So the `aks` profile edits `/etc/default/kubelet` directly. It rewrites the acti
 
 ## Audience
 
-kubelet asks the API server for a token whose audience is `registry.audience`, and on AKS as anywhere else that request is authorized by the node audience RBAC the chart creates. AKS does not expose `--api-audiences`, and does not need to: that flag governs the tokens the API server accepts, not the ones it issues. Any agreed string works as the audience, as long as the Harbor Federated IDP is configured with the same one.
+kubelet asks the API server for a token whose audience is `registry.audience`, and on AKS as anywhere else that request is authorized by the node audience RBAC the chart creates. AKS does not expose `--api-audiences`, and does not need to: that flag governs the tokens the API server accepts, not the ones it issues. Any agreed string works as the audience, as long as the Harbor Trusted Issuer is configured with the same one.
 
-Harbor also has to reach the cluster's signing keys to validate those tokens, so enable the [OIDC issuer](https://learn.microsoft.com/en-us/azure/aks/use-oidc-issuer) on the cluster and point the Federated IDP at that URL.
+Harbor also has to reach the cluster's signing keys to validate those tokens, so enable the [OIDC issuer](https://learn.microsoft.com/en-us/azure/aks/use-oidc-issuer) on the cluster and point the Trusted Issuer at that URL.
 
 ## Install
 

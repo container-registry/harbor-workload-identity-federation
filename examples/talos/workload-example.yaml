@@ -3,7 +3,7 @@
 # Harbor audience, hands it to harbor-credential-provider, and authenticates
 # the pull.
 #
-# The ServiceAccount identity must match the Harbor Federated IDP claim rule:
+# The ServiceAccount identity must match the Harbor Trusted Issuer claim rule:
 #   sub == system:serviceaccount:<namespace>:<service-account>
 # For the manifests below that is:
 #   sub == system:serviceaccount:demo:harbor-puller

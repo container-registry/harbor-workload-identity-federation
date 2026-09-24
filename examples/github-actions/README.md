@@ -4,7 +4,7 @@ This example uses GitHub Actions OIDC to authenticate to Harbor without storing 
 
 ## Harbor Setup
 
-Create a Harbor Federated IDP:
+Add GitHub as a Trusted Issuer in Harbor:
 
 ```text
 OpenID configuration URL: https://token.actions.githubusercontent.com/.well-known/openid-configuration
@@ -46,7 +46,7 @@ permissions:
   contents: read
 ```
 
-The token request audience must exactly match the Harbor Federated IDP audience:
+The token request audience must exactly match the Harbor Trusted Issuer audience:
 
 ```bash
 "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=<your-registry-domain-or-url>"
@@ -55,3 +55,7 @@ The token request audience must exactly match the Harbor Federated IDP audience:
 ## Notes
 
 The example prints only decoded JWT header and payload for debugging. Do not print the raw token in real pipelines.
+
+## Harbor Side
+
+Configuring the Trusted Issuer and the robot account claim rules is documented at [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).

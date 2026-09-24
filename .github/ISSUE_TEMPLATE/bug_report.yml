@@ -109,7 +109,7 @@ body:
         Node and cluster information:
         - Kubernetes version (`kubectl version`)
         - Node OS and version
-        - Harbor / Container Registry version and the configured Federated IDP audience
+        - Harbor / Container Registry version and the configured Trusted Issuer audience
       placeholder: |
         - Kubernetes: v1.34.1
         - Node OS: Ubuntu 24.04

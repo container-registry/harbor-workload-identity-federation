@@ -44,13 +44,13 @@ kubectl get pod httpd -w
 
 ## Harbor Has To Reach the Issuer
 
-A k3d cluster on your machine is not reachable from a hosted Harbor, so online JWKS validation will not work. Configure the Federated IDP with inline JWKS instead:
+A k3d cluster on your machine is not reachable from a hosted Harbor, so online JWKS validation will not work. Configure the Trusted Issuer with inline JWKS instead:
 
 ```bash
 kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)"
 ```
 
-Paste that into the IDP. The [Talos example](../../talos/) walks through the same offline setup in more detail.
+Paste that into the Trusted Issuer. The [Talos example](../../talos/) walks through the same offline setup in more detail.
 
 ## Cleanup
 

@@ -8,7 +8,7 @@ profile: generic
 
 registry:
   host: harbor.example.com
-  # Must match the audience configured in the Harbor Federated IDP, exactly.
+  # Must match the audience configured in the Harbor Trusted Issuer, exactly.
   audience: harbor.example.com
 
 kubelet:

@@ -61,4 +61,4 @@ kubectl apply -f examples/kubernetes/pod-example.yaml
 
 kind needs nothing passed at cluster creation for this. kubelet's request for a Harbor token is authorized by the node audience RBAC the chart creates. The API server's `--api-audiences` governs the tokens it accepts, not the ones it issues, so your registry does not belong there.
 
-For Harbor to validate tokens from a local kind cluster, the cluster issuer has to be reachable from Harbor, or the Federated IDP has to be configured with inline JWKS. The [Talos example](../../talos/) has the offline JWKS recipe, which applies here too.
+For Harbor to validate tokens from a local kind cluster, the cluster issuer has to be reachable from Harbor, or the Trusted Issuer has to be configured with inline JWKS. The [Talos example](../../talos/) has the offline JWKS recipe, which applies here too.

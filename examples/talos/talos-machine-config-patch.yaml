@@ -12,7 +12,7 @@
 # at runtime because the Talos rootfs is immutable.
 #
 # Replace harbor.example.com with your registry host, and keep the audience
-# equal to the audience configured on the Harbor Federated IDP.
+# equal to the audience configured on the Harbor Trusted Issuer.
 machine:
   kubelet:
     credentialProviderConfig:
