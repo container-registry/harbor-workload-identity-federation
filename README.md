@@ -225,7 +225,7 @@ Configure kubelet flags:
 --image-credential-provider-config=/etc/kubernetes/credential-providers/config.yaml
 ```
 
-The [chart README](deploy/helm/credential-provider-harbor/README.md) covers the values you are likely to change; [`values.yaml`](deploy/helm/credential-provider-harbor/values.yaml) is the complete list. `values.schema.json` rejects the common mistakes at install time: an empty `registry.host`, an unknown profile, `profile=custom` without host paths, a relative host path, or a malformed cache duration.
+The [chart README](deploy/helm/credential-provider-harbor/README.md) covers the values you are likely to change; [`values.yaml`](deploy/helm/credential-provider-harbor/values.yaml) is the full list. `values.schema.json` catches the usual mistakes when you run `helm install`, rather than leaving you to find them on a node: no `registry.host`, an unknown profile, `profile=custom` with no paths set, a relative host path, a bad cache duration, a marker file on tmpfs, a path with characters the kubelet argument files cannot hold, and a `securityContext` that takes away privileges the installer needs.
 
 ### Building from Source
 
@@ -575,6 +575,8 @@ Here's an example of what a GitLab CI OIDC token looks like:
 This section describes how to set up a local k3s/k3d cluster with Kubernetes Image Credential Provider (KEP-4412) to pull images using Service Account tokens (Federated Robot Accounts).
 
 > For other distributions, [`examples/kubernetes/`](examples/kubernetes/) has a page each for kubeadm, EKS, GKE, AKS, k3s, k3d, kind, RKE2, MicroK8s, and OpenShift, covering where each one keeps its kubelet arguments. [`scripts/verify-node-install.sh`](scripts/verify-node-install.sh) checks whether a node is actually set up.
+>
+> kind is the only distribution tested end to end, on Kubernetes 1.34. The other pages come from each distribution's docs and from what the installer writes. The paths and the mechanisms are right, but nobody has watched a pull succeed on them yet. Run the verify script after installing, and tell us if a page is wrong.
 
 ### How It Works
 
@@ -736,6 +738,7 @@ spec:
   serviceAccountName: default
   containers:
   - name: httpd
+    # change this to an image you actually have in Harbor
     image: <your-registry-domain>/library/httpd
     imagePullPolicy: Always
 ```
@@ -805,7 +808,7 @@ spec:
 
 3. **JWKS Rotation**: Recreating the cluster generates new signing keys. Update Harbor's Federated IDP with the new JWKS.
 
-4. **Kubernetes 1.33**: Must explicitly enable feature gates `ServiceAccountNodeAudienceRestriction` and `KubeletServiceAccountTokenForCredentialProviders`.
+4. **Kubernetes 1.33**: You have to turn on the `ServiceAccountNodeAudienceRestriction` and `KubeletServiceAccountTokenForCredentialProviders` feature gates yourself. The chart sets `kubeVersion: ">=1.34.0-0"` and will not install below 1.34, so on 1.33 install the binary and config by hand; see [Direct Binary](#direct-binary).
 
 ### Troubleshooting
 

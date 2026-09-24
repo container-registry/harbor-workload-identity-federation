@@ -7,8 +7,6 @@ spec:
   serviceAccountName: default
   containers:
   - name: httpd
-    # Replace with an image that exists in YOUR Harbor. harbor.example.com is a
-    # placeholder; applied as-is this pod sits in ImagePullBackOff, which looks
-    # exactly like a broken credential provider.
+    # change this to an image you actually have in Harbor
     image: harbor.example.com/library/httpd
     imagePullPolicy: Always
