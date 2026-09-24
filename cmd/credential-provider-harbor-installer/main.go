@@ -672,13 +672,45 @@ func removeMarker(opts options) error {
 }
 
 // writeMarker records which install this node completed and when.
+//
+// Written to a temporary file in the marker's own directory and renamed over
+// it, because the readiness probe reads the first line. A write straight into
+// the live marker that fails partway through - a full filesystem is the usual
+// way - can land that first line and nothing else, which is all the probe
+// needs to report the node done while the installer returns an error.
 func writeMarker(opts options) error {
 	marker := hostPath(opts, opts.InstalledMarker)
-	if err := os.MkdirAll(filepath.Dir(marker), 0755); err != nil {
+	dir := filepath.Dir(marker)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("create marker directory: %w", err)
 	}
-	if err := os.WriteFile(marker, markerContent(opts, time.Now().UTC()), 0644); err != nil {
+	tmp, err := os.CreateTemp(dir, filepath.Base(marker)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create marker file: %w", err)
+	}
+	// Named now so every failure below can remove it: a crash between here and
+	// the rename would otherwise leave the directory collecting one orphan per
+	// attempt.
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(markerContent(opts, time.Now().UTC())); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("write marker file: %w", err)
+	}
+	// CreateTemp opens at 0600, and the marker is world-readable so that a
+	// kubectl debug pod can check a node without being root.
+	if err := tmp.Chmod(0644); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("set marker file mode: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("close marker file: %w", err)
+	}
+	if err := os.Rename(tmpName, marker); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("move marker file into place: %w", err)
 	}
 	return nil
 }
