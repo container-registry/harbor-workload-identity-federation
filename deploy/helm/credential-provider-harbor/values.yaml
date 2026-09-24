@@ -141,7 +141,9 @@ readinessProbe:
 
 # Container security context. The installer writes to the host filesystem and
 # restarts kubelet, so it needs privileges. Relaxing these will break it, which
-# is why values.schema.json requires privileged: true.
+# is why values.schema.json requires privileged: true and rejects the three
+# fields that contradict it: allowPrivilegeEscalation: false, runAsNonRoot:
+# true, and a runAsUser other than 0.
 securityContext:
   privileged: true
 

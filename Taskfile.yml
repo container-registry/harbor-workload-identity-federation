@@ -334,6 +334,9 @@ tasks:
         reject "an unprivileged securityContext" --set registry.host=harbor.example.com --set securityContext.privileged=false
         reject "a securityContext with privileged dropped" --set registry.host=harbor.example.com --set securityContext.privileged=null
         reject "a securityContext removed wholesale" --set registry.host=harbor.example.com --set securityContext=null
+        reject "runAsNonRoot alongside privileged" --set registry.host=harbor.example.com --set securityContext.runAsNonRoot=true
+        reject "a non-root runAsUser" --set registry.host=harbor.example.com --set securityContext.runAsUser=1000
+        reject "privilege escalation turned off under privileged" --set registry.host=harbor.example.com --set securityContext.allowPrivilegeEscalation=false
         reject "a boolean podLabel value" --set registry.host=harbor.example.com --set podLabels.debug=true
         reject "a numeric podLabel value" --set registry.host=harbor.example.com --set podLabels.rev=3
         reject "a boolean podAnnotation value" --set registry.host=harbor.example.com --set podAnnotations.debug=true
@@ -359,6 +362,7 @@ tasks:
         accept "a quoted extraEnv value" --set registry.host=harbor.example.com --set extraEnv[0].name=PRESERVE_ECR_PROVIDER --set-string extraEnv[0].value=false
         accept "a marker directly under a top-level directory" --set registry.host=harbor.example.com --set installer.installedMarker=/cph-marker
         accept "an explicit systemd drop-in path" --set registry.host=harbor.example.com --set kubelet.systemdDropInPath=/etc/systemd/system/kubelet.service.d/50-cph.conf
+        accept "a securityContext field the installer does not care about" --set registry.host=harbor.example.com --set securityContext.seccompProfile.type=RuntimeDefault
         echo "values.schema.json accepts every case above"
 
   release-assets:

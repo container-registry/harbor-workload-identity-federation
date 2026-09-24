@@ -282,13 +282,25 @@
     },
     "securityContext": {
       "type": "object",
-      "description": "The installer writes to the host filesystem and restarts kubelet, so privileged is not optional. Without it the pod starts and then fails on the node.",
+      "description": "The installer writes to the host filesystem and restarts kubelet, so privileged is not optional. Without it the pod starts and then fails on the node. The three fields below are the ones that contradict privileged: true, and each fails earlier and less legibly than a schema error. Anything else a cluster policy needs here still passes.",
       "required": [
         "privileged"
       ],
       "properties": {
         "privileged": {
           "const": true
+        },
+        "allowPrivilegeEscalation": {
+          "const": true,
+          "description": "false alongside privileged: true is a contradiction the API server rejects, so the DaemonSet never applies."
+        },
+        "runAsNonRoot": {
+          "const": false,
+          "description": "The image runs as root. true makes kubelet refuse to start the container, and the node stays uninstalled with no event that names this value."
+        },
+        "runAsUser": {
+          "const": 0,
+          "description": "Any other UID cannot write the binary, the config or the kubelet drop-in to the node."
         }
       }
     },
