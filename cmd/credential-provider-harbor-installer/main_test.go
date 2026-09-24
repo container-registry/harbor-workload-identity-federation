@@ -331,18 +331,18 @@ func TestMarkerContentLeadsWithTheInstallIDTheProbeGrepsFor(t *testing.T) {
 		{
 			name:      "chart install ID",
 			installID: "8a08abd5413fbe30",
-			want:      "install-id=8a08abd5413fbe30\ncompleted-at=2026-03-04T05:06:07Z\n",
+			want:      "install-id=8a08abd5413fbe30\nkubelet-restarted=true\ncompleted-at=2026-03-04T05:06:07Z\n",
 		},
 		{
 			name:      "standalone run",
 			installID: standaloneInstallID,
-			want:      "install-id=standalone\ncompleted-at=2026-03-04T05:06:07Z\n",
+			want:      "install-id=standalone\nkubelet-restarted=true\ncompleted-at=2026-03-04T05:06:07Z\n",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := string(markerContent(options{InstallID: test.installID}, completedAt))
+			got := string(markerContent(options{InstallID: test.installID}, true, completedAt))
 			if got != test.want {
 				t.Fatalf("markerContent() = %q, want %q", got, test.want)
 			}
@@ -355,7 +355,7 @@ func TestMarkerContentLeadsWithTheInstallIDTheProbeGrepsFor(t *testing.T) {
 	}
 }
 
-func TestReadMarkerInstallID(t *testing.T) {
+func TestReadMarkerReadsTheInstallIDBackExactly(t *testing.T) {
 	tests := []struct {
 		name   string
 		marker string
@@ -384,12 +384,12 @@ func TestReadMarkerInstallID(t *testing.T) {
 				writeMarkerFile(t, opts, test.marker)
 			}
 
-			got, err := readMarkerInstallID(opts)
+			got, err := readMarker(opts)
 			if err != nil {
-				t.Fatalf("readMarkerInstallID() error: %v", err)
+				t.Fatalf("readMarker() error: %v", err)
 			}
-			if got != test.want {
-				t.Fatalf("readMarkerInstallID() = %q, want %q", got, test.want)
+			if got.InstallID != test.want {
+				t.Fatalf("readMarker().InstallID = %q, want %q", got.InstallID, test.want)
 			}
 		})
 	}
@@ -485,27 +485,27 @@ func TestRebootDoesNotRepeatTheKubeletRestart(t *testing.T) {
 			}
 
 			// Same pod, same node, nothing rebooted: no second restart.
-			installed, err := readMarkerInstallID(opts)
+			installed, err := readMarker(opts)
 			if err != nil {
-				t.Fatalf("readMarkerInstallID() error: %v", err)
+				t.Fatalf("readMarker() error: %v", err)
 			}
-			if installed != opts.InstallID {
-				t.Fatalf("install ID after a run = %q, want %q", installed, opts.InstallID)
+			if installed.InstallID != opts.InstallID {
+				t.Fatalf("install ID after a run = %q, want %q", installed.InstallID, opts.InstallID)
 			}
-			if kubeletRestartNeeded(false, installed, opts.InstallID) {
+			if kubeletRestartNeeded(false, installed, opts) {
 				t.Fatal("kubeletRestartNeeded() = true right after the install, want false")
 			}
 
 			simulateReboot(t, hostRoot)
 
-			afterBoot, err := readMarkerInstallID(opts)
+			afterBoot, err := readMarker(opts)
 			if err != nil {
-				t.Fatalf("readMarkerInstallID() after a reboot error: %v", err)
+				t.Fatalf("readMarker() after a reboot error: %v", err)
 			}
-			if afterBoot != test.wantIDAfterAReboot {
-				t.Fatalf("install ID after a reboot = %q, want %q", afterBoot, test.wantIDAfterAReboot)
+			if afterBoot.InstallID != test.wantIDAfterAReboot {
+				t.Fatalf("install ID after a reboot = %q, want %q", afterBoot.InstallID, test.wantIDAfterAReboot)
 			}
-			if got := kubeletRestartNeeded(false, afterBoot, opts.InstallID); got != test.wantRestartOnBoot {
+			if got := kubeletRestartNeeded(false, afterBoot, opts); got != test.wantRestartOnBoot {
 				t.Fatalf("kubeletRestartNeeded() after a reboot = %t, want %t", got, test.wantRestartOnBoot)
 			}
 		})
@@ -576,6 +576,52 @@ func TestInstallWritesNoMarkerWhenTheKubeletRestartFails(t *testing.T) {
 	}
 }
 
+// TestTurningRestartsBackOnRestartsKubeletOnce is the staged rollout done
+// without the chart: install with RESTART_KUBELET=false, then turn it on. The
+// install ID does not change between the two runs, because nothing outside the
+// chart derives one from the values, and by the second run every host file is
+// already correct. Only the marker knows kubelet was never restarted.
+func TestTurningRestartsBackOnRestartsKubeletOnce(t *testing.T) {
+	hostRoot := t.TempDir()
+	opts := markerOptions(t, hostRoot, standaloneInstallID)
+	opts.RestartKubelet = false
+
+	// Mirrors restartKubelet, which returns without touching the node when
+	// RESTART_KUBELET is false.
+	restarts := 0
+	restart := func(o options) error {
+		if !o.RestartKubelet {
+			return nil
+		}
+		restarts++
+		return nil
+	}
+
+	if err := install(opts, restart); err != nil {
+		t.Fatalf("install() with restarts off error: %v", err)
+	}
+	if restarts != 0 {
+		t.Fatalf("kubelet restarts with restarts off = %d, want 0", restarts)
+	}
+
+	opts.RestartKubelet = true
+	if err := install(opts, restart); err != nil {
+		t.Fatalf("install() with restarts on error: %v", err)
+	}
+	if restarts != 1 {
+		t.Fatalf("kubelet restarts after turning them on = %d, want 1", restarts)
+	}
+
+	// And the run after that leaves it alone: the marker now records the
+	// restart, so a container coming back up does not take kubelet down again.
+	if err := install(opts, restart); err != nil {
+		t.Fatalf("install() on a settled node error: %v", err)
+	}
+	if restarts != 1 {
+		t.Fatalf("kubelet restarts on a settled node = %d, want 1", restarts)
+	}
+}
+
 func TestRemoveMarkerToleratesAMissingMarker(t *testing.T) {
 	opts := markerOptions(t, t.TempDir(), "abc123")
 
@@ -585,26 +631,51 @@ func TestRemoveMarkerToleratesAMissingMarker(t *testing.T) {
 }
 
 func TestKubeletRestartNeeded(t *testing.T) {
+	restarted := func(id string) markerState {
+		return markerState{InstallID: id, KubeletRestarted: true}
+	}
+
 	tests := []struct {
-		name              string
-		hostChanged       bool
-		previousInstallID string
-		installID         string
-		want              bool
+		name        string
+		hostChanged bool
+		previous    markerState
+		installID   string
+		// restartKubelet mirrors RESTART_KUBELET. It only decides anything
+		// when the node is otherwise up to date.
+		restartKubelet bool
+		want           bool
 	}{
-		{name: "fresh node", hostChanged: true, previousInstallID: "", installID: "abc", want: true},
-		{name: "host files changed", hostChanged: true, previousInstallID: "abc", installID: "abc", want: true},
-		{name: "container restarted, nothing changed", previousInstallID: "abc", installID: "abc", want: false},
-		{name: "new install ID, host already matches", previousInstallID: "abc", installID: "def", want: true},
-		{name: "marker predating install IDs", previousInstallID: "", installID: "abc", want: true},
+		{name: "fresh node", hostChanged: true, installID: "abc", restartKubelet: true, want: true},
+		{name: "host files changed", hostChanged: true, previous: restarted("abc"), installID: "abc", restartKubelet: true, want: true},
+		{name: "container restarted, nothing changed", previous: restarted("abc"), installID: "abc", restartKubelet: true, want: false},
+		{name: "new install ID, host already matches", previous: restarted("abc"), installID: "def", restartKubelet: true, want: true},
+		{name: "marker predating install IDs", installID: "abc", restartKubelet: true, want: true},
+		// The staged rollout without the chart: the same standalone install ID
+		// on both runs, the files already in place, and kubelet still running
+		// against the flags it had before the first run.
+		{
+			name:           "restarts turned back on after a run that skipped them",
+			previous:       markerState{InstallID: standaloneInstallID},
+			installID:      standaloneInstallID,
+			restartKubelet: true,
+			want:           true,
+		},
+		{
+			name:           "restarts still off",
+			previous:       markerState{InstallID: standaloneInstallID},
+			installID:      standaloneInstallID,
+			restartKubelet: false,
+			want:           false,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := kubeletRestartNeeded(test.hostChanged, test.previousInstallID, test.installID)
+			opts := options{InstallID: test.installID, RestartKubelet: test.restartKubelet}
+			got := kubeletRestartNeeded(test.hostChanged, test.previous, opts)
 			if got != test.want {
-				t.Fatalf("kubeletRestartNeeded(%t, %q, %q) = %t, want %t",
-					test.hostChanged, test.previousInstallID, test.installID, got, test.want)
+				t.Fatalf("kubeletRestartNeeded(%t, %+v, %q) = %t, want %t",
+					test.hostChanged, test.previous, test.installID, got, test.want)
 			}
 		})
 	}
@@ -643,14 +714,14 @@ func TestRunLeavesTheMarkerTheInstallerCanReadBackExactly(t *testing.T) {
 				t.Fatalf("run() error: %v", err)
 			}
 
-			got, err := readMarkerInstallID(opts)
+			got, err := readMarker(opts)
 			if err != nil {
-				t.Fatalf("readMarkerInstallID() error: %v", err)
+				t.Fatalf("readMarker() error: %v", err)
 			}
-			if got != installID {
-				t.Fatalf("readMarkerInstallID() = %q, want %q", got, installID)
+			if got.InstallID != installID {
+				t.Fatalf("readMarker().InstallID = %q, want %q", got.InstallID, installID)
 			}
-			if kubeletRestartNeeded(false, got, installID) {
+			if kubeletRestartNeeded(false, got, opts) {
 				t.Fatal("kubeletRestartNeeded() = true after a completed install, want false")
 			}
 		})
