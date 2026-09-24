@@ -196,7 +196,7 @@ tasks:
           }
           echo "render ok: $desc renders \"$line\""
         }
-        for profile in generic eks aws k3s k3d kind gke; do
+        for profile in generic eks aws k3s k3d rke2 kind gke aks microk8s; do
           render "profile $profile" --set profile="$profile"
         done
         render "profile custom with host paths" \
@@ -353,6 +353,17 @@ tasks:
         reject "a binaryName with a path in it" --set registry.host=harbor.example.com --set credentialProvider.binaryName=../credential-provider-harbor
         reject "a binaryName of ." --set registry.host=harbor.example.com --set credentialProvider.binaryName=.
         reject "a binaryName of .." --set registry.host=harbor.example.com --set credentialProvider.binaryName=..
+        reject "a binDir with a space in it" --set registry.host=harbor.example.com --set 'credentialProvider.binDir=/opt/a b'
+        reject "a binDir with a systemd specifier" --set registry.host=harbor.example.com --set 'credentialProvider.binDir=/opt/%i/providers'
+        # Through a values file, not --set: helm's strvals parser treats a lone
+        # double quote as a delimiter, and the point of this case is what the
+        # schema does, not what strvals does.
+        quoted=$(mktemp) && trap 'rm -f "$quoted"' EXIT
+        printf 'registry:\n  host: harbor.example.com\ncredentialProvider:\n  configPath: /etc/it"s/config.yaml\n' > "$quoted"
+        reject "a configPath with a quote in it" -f "$quoted"
+        reject "a relative kubeletDefaultsPath" --set registry.host=harbor.example.com --set kubelet.kubeletDefaultsPath=etc/default/kubelet
+        reject "a relative rke2ConfigDropInPath" --set registry.host=harbor.example.com --set kubelet.rke2ConfigDropInPath=etc/rancher/rke2/config.yaml.d/99.yaml
+        reject "a relative microk8sArgsPath" --set registry.host=harbor.example.com --set kubelet.microk8sArgsPath=var/snap/microk8s/current/args/kubelet
         reject "updateStrategy.type=Recreate" --set registry.host=harbor.example.com --set updateStrategy.type=Recreate
         reject "a maxUnavailable above one" --set registry.host=harbor.example.com --set updateStrategy.rollingUpdate.maxUnavailable=5
         reject "a maxSurge that adds a second installer per node" --set registry.host=harbor.example.com --set updateStrategy.rollingUpdate.maxSurge=1

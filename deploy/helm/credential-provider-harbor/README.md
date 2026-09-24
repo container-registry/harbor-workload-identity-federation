@@ -46,11 +46,16 @@ The profile decides the host paths and how kubelet gets told about them.
 | `generic` | kubeadm and other systemd nodes | `/usr/local/bin/credential-providers` | `/etc/kubernetes/credential-providers/config.yaml` |
 | `eks`, `aws` | EKS AL2023. Keeps the existing ECR provider entry | `/etc/eks/image-credential-provider` | `/etc/eks/image-credential-provider/config.json` |
 | `k3s`, `k3d` | k3s and k3d | `/var/lib/rancher/credentialprovider/bin` | `/var/lib/rancher/credentialprovider/config.yaml` |
+| `rke2` | RKE2 server and agent nodes | `/var/lib/rancher/credentialprovider/bin` | `/var/lib/rancher/credentialprovider/config.yaml` |
 | `kind` | kind node containers | `/var/lib/kubelet/credential-provider` | `/var/lib/kubelet/credential-provider-config.yaml` |
 | `gke` | GKE Standard, best effort | same as `generic` | same as `generic` |
+| `aks` | AKS. Patches `KUBELET_FLAGS` in `/etc/default/kubelet` | same as `generic` | same as `generic` |
+| `microk8s` | MicroK8s. Edits the snap's kubelet arguments file | `/var/snap/microk8s/common/credentialprovider/bin` | `/var/snap/microk8s/common/credentialprovider/config.yaml` |
 | `custom` | Anything else | `credentialProvider.binDir` | `credentialProvider.configPath` |
 
 `custom` requires both paths. The values schema rejects the install if either is empty.
+
+`rke2`, `aks` and `microk8s` each wire kubelet the way their distribution expects, because none of them reads the `KUBELET_EXTRA_ARGS` drop-in that `generic` writes. `rke2` writes a new drop-in file. `aks` and `microk8s` edit a file the distribution owns, so they fail the install when it is not there rather than reporting success on a node they did not change. Per-distribution notes are in [`examples/kubernetes/`](../../../examples/kubernetes/).
 
 On `kind`, check that the live kubelet command line inside the node container has `--image-credential-provider-bin-dir` and `--image-credential-provider-config`. If pulls fail with `no basic auth credentials` and those flags are missing, kind did not pick up `KUBELET_EXTRA_ARGS`; reinstall with `--set kubelet.forceExecStartOverride=true`, which rewrites the kubelet `ExecStart` line instead.
 
@@ -93,6 +98,9 @@ On `kind`, check that the live kubelet command line inside the node container ha
 | `kubelet.serviceName` | by profile | systemd unit to restart. |
 | `kubelet.systemdDropInPath` | by profile | Drop-in written for `generic`, `kind`, `gke`, and `custom`. |
 | `kubelet.k3sConfigDropInPath` | by profile | Drop-in written for `k3s` and `k3d`. |
+| `kubelet.rke2ConfigDropInPath` | by profile | Drop-in written for `rke2`. |
+| `kubelet.kubeletDefaultsPath` | by profile | EnvironmentFile patched for `aks`. |
+| `kubelet.microk8sArgsPath` | by profile | Arguments file edited for `microk8s`. |
 | `kubelet.forceExecStartOverride` | `false` | kind only. See the note above. |
 
 ### Workload
@@ -182,4 +190,4 @@ Once those nodes are Ready, label the next batch. Labelling a node creates its i
 
 ## Harbor Side
 
-The cluster half is only half the setup. In Harbor, configure a Federated Identity Provider with the cluster's issuer URL and JWKS, then create a federated robot account whose claim rules match the tokens your cluster mints, usually on `iss`, `aud`, and `sub`. The audience there and `registry.audience` here have to be the same string. See https://container-registry.com/docs/ for the Harbor-side walkthrough.
+The cluster half is only half the setup. In Harbor, configure a Federated Identity Provider with the cluster's issuer URL and JWKS, then create a federated robot account whose claim rules match the tokens your cluster mints, usually on `iss`, `aud`, and `sub`. The audience there and `registry.audience` here have to be the same string. The walkthrough is [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).

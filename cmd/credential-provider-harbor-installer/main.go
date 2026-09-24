@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -72,6 +71,9 @@ type options struct {
 	KubeletService        string
 	SystemdDropInPath     string
 	K3sConfigDropInPath   string
+	RKE2ConfigDropInPath  string
+	KubeletDefaultsPath   string
+	MicroK8sArgsPath      string
 	PreserveECRProvider   bool
 	SleepForever          bool
 	InstalledMarker       string
@@ -79,13 +81,16 @@ type options struct {
 }
 
 type profileDefaults struct {
-	BinDir              string
-	ConfigPath          string
-	ConfigFormat        string
-	KubeletService      string
-	SystemdDropInPath   string
-	K3sConfigDropInPath string
-	PreserveECRProvider bool
+	BinDir               string
+	ConfigPath           string
+	ConfigFormat         string
+	KubeletService       string
+	SystemdDropInPath    string
+	K3sConfigDropInPath  string
+	RKE2ConfigDropInPath string
+	KubeletDefaultsPath  string
+	MicroK8sArgsPath     string
+	PreserveECRProvider  bool
 }
 
 type credentialProviderConfig struct {
@@ -212,6 +217,9 @@ func optionsFromEnv() (options, error) {
 		KubeletService:        env("KUBELET_SERVICE", defaults.KubeletService),
 		SystemdDropInPath:     env("SYSTEMD_DROP_IN_PATH", defaults.SystemdDropInPath),
 		K3sConfigDropInPath:   env("K3S_CONFIG_DROP_IN_PATH", defaults.K3sConfigDropInPath),
+		RKE2ConfigDropInPath:  env("RKE2_CONFIG_DROP_IN_PATH", defaults.RKE2ConfigDropInPath),
+		KubeletDefaultsPath:   env("KUBELET_DEFAULTS_PATH", defaults.KubeletDefaultsPath),
+		MicroK8sArgsPath:      env("MICROK8S_KUBELET_ARGS_PATH", defaults.MicroK8sArgsPath),
 		PreserveECRProvider:   preserveECR,
 		SleepForever:          boolEnv("SLEEP_FOREVER", false),
 		InstalledMarker:       env("INSTALLED_MARKER", defaultInstalledMarker),
@@ -244,12 +252,39 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 			KubeletService:      "k3s",
 			K3sConfigDropInPath: "/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml",
 		}, nil
+	case "rke2":
+		return profileDefaults{
+			BinDir:               "/var/lib/rancher/credentialprovider/bin",
+			ConfigPath:           "/var/lib/rancher/credentialprovider/config.yaml",
+			ConfigFormat:         "yaml",
+			KubeletService:       "rke2-agent",
+			RKE2ConfigDropInPath: "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml",
+		}, nil
 	case "kind":
 		return profileDefaults{
 			BinDir:         "/var/lib/kubelet/credential-provider",
 			ConfigPath:     "/var/lib/kubelet/credential-provider-config.yaml",
 			ConfigFormat:   "yaml",
 			KubeletService: "kubelet",
+		}, nil
+	case "aks":
+		return profileDefaults{
+			BinDir:              "/usr/local/bin/credential-providers",
+			ConfigPath:          "/etc/kubernetes/credential-providers/config.yaml",
+			ConfigFormat:        "yaml",
+			KubeletService:      "kubelet",
+			KubeletDefaultsPath: "/etc/default/kubelet",
+		}, nil
+	case "microk8s":
+		// The snap's writable tree, not /usr/local/bin: confinement keeps
+		// kubelite out of the latter, and /var/snap/microk8s/common survives
+		// a snap refresh while /var/snap/microk8s/current does not.
+		return profileDefaults{
+			BinDir:           "/var/snap/microk8s/common/credentialprovider/bin",
+			ConfigPath:       "/var/snap/microk8s/common/credentialprovider/config.yaml",
+			ConfigFormat:     "yaml",
+			KubeletService:   "snap.microk8s.daemon-kubelite",
+			MicroK8sArgsPath: "/var/snap/microk8s/current/args/kubelet",
 		}, nil
 	default:
 		return profileDefaults{}, fmt.Errorf("unsupported PROFILE %q", profile)
@@ -379,6 +414,43 @@ func validateOptions(opts options) error {
 			return fmt.Errorf("%s must name a path inside a parent directory, not %q", name, path)
 		}
 	}
+
+	// These two are pasted verbatim into a systemd Environment= line, a kind
+	// ExecStart line, two YAML drop-ins, the MicroK8s arguments file and the
+	// AKS KUBELET_FLAGS assignment. Each of those has its own quoting rules,
+	// and a path carrying any of these parses as something else in at least
+	// one of them: systemd expands $VAR in ExecStart and reads % as a
+	// specifier escape, and the rest break the quoting. Refusing is safer
+	// than escaping five ways, and no real path needs them.
+	for name, path := range map[string]string{"BIN_DIR": opts.BinDir, "CONFIG_PATH": opts.ConfigPath} {
+		if strings.ContainsAny(path, " \t\r\n\"'\\$%") {
+			return fmt.Errorf("%s must not contain whitespace, quotes, backslashes, $ or %%: %q", name, path)
+		}
+	}
+
+	optionalPaths := map[string]string{
+		"SYSTEMD_DROP_IN_PATH":       opts.SystemdDropInPath,
+		"K3S_CONFIG_DROP_IN_PATH":    opts.K3sConfigDropInPath,
+		"RKE2_CONFIG_DROP_IN_PATH":   opts.RKE2ConfigDropInPath,
+		"KUBELET_DEFAULTS_PATH":      opts.KubeletDefaultsPath,
+		"MICROK8S_KUBELET_ARGS_PATH": opts.MicroK8sArgsPath,
+	}
+	for name, path := range optionalPaths {
+		if path == "" {
+			continue
+		}
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("%s must be an absolute path: %q", name, path)
+		}
+		// Each of these names a file a profile writes, so the rule for the
+		// named paths above holds here too. Left unchecked, a directory here
+		// fails in the profile writer, which runs after the binary and the
+		// config are on the node and after the marker has been removed: the
+		// node is then half-installed and reads as not installed at all.
+		if path == "/" || strings.HasSuffix(path, "/") {
+			return fmt.Errorf("%s must name a path inside a parent directory, not %q", name, path)
+		}
+	}
 	// The readiness probe matches the marker's first line whole, so an install
 	// ID that spans lines would write a marker that can never satisfy it, and
 	// one padded with whitespace is a line no operator can read back reliably.
@@ -471,116 +543,6 @@ func installCredentialProviderConfig(opts options) (bool, error) {
 	return changed, nil
 }
 
-func configureKubelet(opts options) (bool, error) {
-	if !opts.ConfigureKubelet {
-		fmt.Printf("[WARN] Kubelet configuration disabled. Ensure kubelet uses --image-credential-provider-bin-dir=%s and --image-credential-provider-config=%s\n", opts.BinDir, opts.ConfigPath)
-		return false, nil
-	}
-
-	switch opts.Profile {
-	case "eks", "aws":
-		fmt.Println("[INFO] EKS profile uses the AMI credential-provider path; no kubelet flag drop-in required")
-		return false, nil
-	case "k3s", "k3d":
-		return configureK3s(opts)
-	case "kind":
-		if !opts.ForceKubeletExecStart {
-			return configureSystemdKubelet(opts)
-		}
-		return configureKindSystemdKubelet(opts)
-	default:
-		return configureSystemdKubelet(opts)
-	}
-}
-
-func configureSystemdKubelet(opts options) (bool, error) {
-	service := opts.KubeletService
-	if service == "" {
-		service = "kubelet"
-	}
-	dropInPath := opts.SystemdDropInPath
-	if dropInPath == "" {
-		dropInPath = filepath.Join("/etc/systemd/system", service+".service.d", "99-credential-provider-harbor.conf")
-	}
-
-	content := fmt.Sprintf(`[Service]
-Environment="KUBELET_EXTRA_ARGS=--image-credential-provider-bin-dir=%s --image-credential-provider-config=%s"
-`, opts.BinDir, opts.ConfigPath)
-
-	hostDropInPath := hostPath(opts, dropInPath)
-	if err := os.MkdirAll(filepath.Dir(hostDropInPath), 0755); err != nil {
-		return false, fmt.Errorf("create kubelet systemd drop-in directory: %w", err)
-	}
-	changed, err := writeFileIfChanged(hostDropInPath, []byte(content), 0644, true)
-	if err != nil {
-		return false, fmt.Errorf("write kubelet systemd drop-in: %w", err)
-	}
-	if changed {
-		fmt.Printf("[INFO] Wrote kubelet systemd drop-in: %s\n", hostDropInPath)
-	} else {
-		fmt.Printf("[INFO] Kubelet systemd drop-in already up to date: %s\n", hostDropInPath)
-	}
-	return changed, nil
-}
-
-func configureKindSystemdKubelet(opts options) (bool, error) {
-	service := opts.KubeletService
-	if service == "" {
-		service = "kubelet"
-	}
-	dropInPath := opts.SystemdDropInPath
-	if dropInPath == "" {
-		dropInPath = filepath.Join("/etc/systemd/system", service+".service.d", "99-credential-provider-harbor.conf")
-	}
-
-	content := fmt.Sprintf(`[Service]
-Environment="KUBELET_EXTRA_ARGS=--image-credential-provider-bin-dir=%s --image-credential-provider-config=%s"
-ExecStart=
-ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS --image-credential-provider-bin-dir=%s --image-credential-provider-config=%s
-`, opts.BinDir, opts.ConfigPath, opts.BinDir, opts.ConfigPath)
-
-	hostDropInPath := hostPath(opts, dropInPath)
-	if err := os.MkdirAll(filepath.Dir(hostDropInPath), 0755); err != nil {
-		return false, fmt.Errorf("create kubelet systemd drop-in directory: %w", err)
-	}
-	changed, err := writeFileIfChanged(hostDropInPath, []byte(content), 0644, true)
-	if err != nil {
-		return false, fmt.Errorf("write kind kubelet systemd drop-in: %w", err)
-	}
-	if changed {
-		fmt.Printf("[INFO] Wrote kind kubelet systemd drop-in: %s\n", hostDropInPath)
-	} else {
-		fmt.Printf("[INFO] Kind kubelet systemd drop-in already up to date: %s\n", hostDropInPath)
-	}
-	return changed, nil
-}
-
-func configureK3s(opts options) (bool, error) {
-	dropInPath := opts.K3sConfigDropInPath
-	if dropInPath == "" {
-		dropInPath = "/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml"
-	}
-
-	content := fmt.Sprintf(`image-credential-provider-bin-dir: %q
-image-credential-provider-config: %q
-`, opts.BinDir, opts.ConfigPath)
-
-	hostDropInPath := hostPath(opts, dropInPath)
-	if err := os.MkdirAll(filepath.Dir(hostDropInPath), 0755); err != nil {
-		return false, fmt.Errorf("create k3s config drop-in directory: %w", err)
-	}
-	changed, err := writeFileIfChanged(hostDropInPath, []byte(content), 0644, true)
-	if err != nil {
-		return false, fmt.Errorf("write k3s config drop-in: %w", err)
-	}
-	if changed {
-		fmt.Printf("[INFO] Wrote k3s config drop-in: %s\n", hostDropInPath)
-	} else {
-		fmt.Printf("[INFO] k3s config drop-in already up to date: %s\n", hostDropInPath)
-	}
-	return changed, nil
-}
-
 // kubeletRestartNeeded reports whether kubelet still has to pick up this
 // install. Host changes are the obvious case. The other one is a node whose
 // last completed install ID differs from this one: every host file can already
@@ -599,62 +561,6 @@ func kubeletRestartNeeded(hostChanged bool, previous markerState, opts options) 
 		return true
 	}
 	return opts.RestartKubelet && !previous.KubeletRestarted
-}
-
-func restartKubelet(opts options) error {
-	if !opts.RestartKubelet {
-		fmt.Println("[WARN] Kubelet restart disabled. Restart or roll nodes before testing image pulls.")
-		return nil
-	}
-
-	service := opts.KubeletService
-	if opts.Profile == "k3s" || opts.Profile == "k3d" {
-		service = detectK3sService(opts, service)
-	}
-	if service == "" {
-		service = "kubelet"
-	}
-
-	fmt.Printf("[INFO] Restarting %s\n", service)
-	if opts.ConfigureKubelet && opts.Profile != "eks" && opts.Profile != "aws" {
-		if err := systemctl("daemon-reload"); err != nil {
-			return err
-		}
-	}
-	return systemctl("restart", service)
-}
-
-func systemctl(args ...string) error {
-	cmdArgs := append([]string{"-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "systemctl"}, args...)
-	cmd := exec.Command("nsenter", cmdArgs...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err == nil {
-		return nil
-	} else if !errors.Is(err, exec.ErrNotFound) {
-		return fmt.Errorf("nsenter systemctl %s: %w", strings.Join(args, " "), err)
-	}
-
-	cmd = exec.Command("systemctl", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
-	}
-	return nil
-}
-
-func detectK3sService(opts options, fallback string) string {
-	if fallback != "" && fallback != "k3s" {
-		return fallback
-	}
-	if fileExists(hostPath(opts, "/etc/systemd/system/k3s-agent.service")) {
-		return "k3s-agent"
-	}
-	if fileExists(hostPath(opts, "/etc/systemd/system/k3s.service")) {
-		return "k3s"
-	}
-	return "k3s"
 }
 
 // markerState is what the host marker says about the install the node last

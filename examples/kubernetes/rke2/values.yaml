@@ -1,28 +1,14 @@
 # RKE2.
 #
-# The kubelet is embedded in the rke2-agent process, so there is no kubelet
-# systemd unit to drop a file into. The flags go in
+# kubelet is embedded in the rke2-agent process, so there is no kubelet systemd
+# unit to drop a file into. The rke2 profile writes the flags to
 # /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml under
-# kubelet-arg, which you apply yourself before installing this chart. The
-# server nodes also need the Harbor audience in kube-apiserver-arg. Both steps
-# are in README.md; see rke2/config.yaml for the kubelet-arg drop-in.
+# kubelet-arg and restarts whichever supervisor unit the node runs, rke2-agent
+# or rke2-server. Server nodes also need the Harbor audience in
+# kube-apiserver-arg; that part is still yours, and is in README.md.
 
-profile: custom
-
-credentialProvider:
-  binDir: /var/lib/rancher/credentialprovider/bin
-  configPath: /var/lib/rancher/credentialprovider/config.yaml
-  configFormat: yaml
+profile: rke2
 
 registry:
   host: harbor.example.com
   audience: harbor.example.com
-
-kubelet:
-  # The installer cannot wire RKE2's kubelet: it is not a separate unit.
-  configure: false
-  restart: true
-  # Restart the agent so it picks up the kubelet-arg entries from the
-  # config.yaml.d drop-in you applied in step 1 (rke2/config.yaml).
-  # Use rke2-server on server nodes.
-  serviceName: rke2-agent

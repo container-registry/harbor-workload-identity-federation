@@ -45,29 +45,42 @@ func TestMergeProviderReplacesExistingProviderAndPreservesOthers(t *testing.T) {
 	}
 }
 
+// requireIdempotentConfigureKubelet asserts the contract every profile shares:
+// the first call writes the node configuration, and a second call with the
+// same options finds nothing left to do.
+func requireIdempotentConfigureKubelet(t *testing.T, opts options) {
+	t.Helper()
+
+	changed, err := configureKubelet(opts)
+	if err != nil {
+		t.Fatalf("configureKubelet() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("configureKubelet() changed = false, want true")
+	}
+
+	changed, err = configureKubelet(opts)
+	if err != nil {
+		t.Fatalf("second configureKubelet() error: %v", err)
+	}
+	if changed {
+		t.Fatal("second configureKubelet() changed = true, want false")
+	}
+}
+
 func TestConfigureKindSystemdKubeletWritesExecStartOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 	opts := options{
-		HostRoot:       tmpDir,
-		BinDir:         "/var/lib/kubelet/credential-provider",
-		ConfigPath:     "/var/lib/kubelet/credential-provider-config.yaml",
-		KubeletService: "kubelet",
+		Profile:               "kind",
+		HostRoot:              tmpDir,
+		BinDir:                "/var/lib/kubelet/credential-provider",
+		ConfigPath:            "/var/lib/kubelet/credential-provider-config.yaml",
+		ConfigureKubelet:      true,
+		KubeletService:        "kubelet",
+		ForceKubeletExecStart: true,
 	}
 
-	changed, err := configureKindSystemdKubelet(opts)
-	if err != nil {
-		t.Fatalf("configureKindSystemdKubelet() error: %v", err)
-	}
-	if !changed {
-		t.Fatal("configureKindSystemdKubelet() changed = false, want true")
-	}
-	changed, err = configureKindSystemdKubelet(opts)
-	if err != nil {
-		t.Fatalf("second configureKindSystemdKubelet() error: %v", err)
-	}
-	if changed {
-		t.Fatal("second configureKindSystemdKubelet() changed = true, want false")
-	}
+	requireIdempotentConfigureKubelet(t, opts)
 
 	dropIn := filepath.Join(tmpDir, "etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf")
 	data, err := os.ReadFile(dropIn)
@@ -261,6 +274,97 @@ func TestInstallBinaryFixesModeWhenContentsMatch(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0755 {
 		t.Fatalf("target mode = %v, want 0755", got)
+	}
+}
+
+func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
+	// Every path field a profile can default, asserted whole: the file each
+	// profile writes is chosen by these, and a wrong one writes a valid
+	// drop-in somewhere kubelet never reads. An empty want is an assertion
+	// too — it says the profile must not hand another distribution's writer
+	// a path to work with.
+	tests := []struct {
+		profile          string
+		binDir           string
+		configPath       string
+		kubeletService   string
+		systemdDropIn    string
+		k3sDropIn        string
+		rke2DropIn       string
+		kubeletDefaults  string
+		microK8sArgsPath string
+	}{
+		{
+			profile:         "aks",
+			binDir:          "/usr/local/bin/credential-providers",
+			configPath:      "/etc/kubernetes/credential-providers/config.yaml",
+			kubeletService:  "kubelet",
+			kubeletDefaults: "/etc/default/kubelet",
+		},
+		{
+			profile:        "rke2",
+			binDir:         "/var/lib/rancher/credentialprovider/bin",
+			configPath:     "/var/lib/rancher/credentialprovider/config.yaml",
+			kubeletService: "rke2-agent",
+			rke2DropIn:     "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml",
+		},
+		{
+			profile:          "microk8s",
+			binDir:           "/var/snap/microk8s/common/credentialprovider/bin",
+			configPath:       "/var/snap/microk8s/common/credentialprovider/config.yaml",
+			kubeletService:   "snap.microk8s.daemon-kubelite",
+			microK8sArgsPath: "/var/snap/microk8s/current/args/kubelet",
+		},
+		{
+			profile:        "k3s",
+			binDir:         "/var/lib/rancher/credentialprovider/bin",
+			configPath:     "/var/lib/rancher/credentialprovider/config.yaml",
+			kubeletService: "k3s",
+			k3sDropIn:      "/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.profile, func(t *testing.T) {
+			t.Setenv("PROFILE", tt.profile)
+			t.Setenv("REGISTRY_HOST", "harbor.example.com")
+			// env() treats empty as unset, so this asserts the profile
+			// defaults rather than whatever the shell running the tests
+			// happens to export.
+			for _, name := range []string{
+				"BIN_DIR", "CONFIG_PATH", "CONFIG_DIR", "CONFIG_FILE", "CONFIG_FORMAT",
+				"KUBELET_SERVICE", "KUBELET_DEFAULTS_PATH", "MICROK8S_KUBELET_ARGS_PATH",
+				"RKE2_CONFIG_DROP_IN_PATH", "K3S_CONFIG_DROP_IN_PATH", "SYSTEMD_DROP_IN_PATH",
+			} {
+				t.Setenv(name, "")
+			}
+
+			opts, err := optionsFromEnv()
+			if err != nil {
+				t.Fatalf("optionsFromEnv() error: %v", err)
+			}
+			for _, field := range []struct {
+				name string
+				got  string
+				want string
+			}{
+				{"BinDir", opts.BinDir, tt.binDir},
+				{"ConfigPath", opts.ConfigPath, tt.configPath},
+				{"KubeletService", opts.KubeletService, tt.kubeletService},
+				{"SystemdDropInPath", opts.SystemdDropInPath, tt.systemdDropIn},
+				{"K3sConfigDropInPath", opts.K3sConfigDropInPath, tt.k3sDropIn},
+				{"RKE2ConfigDropInPath", opts.RKE2ConfigDropInPath, tt.rke2DropIn},
+				{"KubeletDefaultsPath", opts.KubeletDefaultsPath, tt.kubeletDefaults},
+				{"MicroK8sArgsPath", opts.MicroK8sArgsPath, tt.microK8sArgsPath},
+			} {
+				if field.got != field.want {
+					t.Errorf("%s = %q, want %q", field.name, field.got, field.want)
+				}
+			}
+			if err := validateOptions(opts); err != nil {
+				t.Fatalf("validateOptions() error: %v", err)
+			}
+		})
 	}
 }
 
@@ -741,6 +845,13 @@ func TestValidateOptionsRejectsPathsThatNameADirectory(t *testing.T) {
 		"BIN_DIR":          func(o *options, v string) { o.BinDir = v },
 		"CONFIG_PATH":      func(o *options, v string) { o.ConfigPath = v },
 		"INSTALLED_MARKER": func(o *options, v string) { o.InstalledMarker = v },
+		// The profile paths are optional, and empty is how a profile that does
+		// not use one says so. Anything else is a file the installer writes.
+		"SYSTEMD_DROP_IN_PATH":       func(o *options, v string) { o.SystemdDropInPath = v },
+		"K3S_CONFIG_DROP_IN_PATH":    func(o *options, v string) { o.K3sConfigDropInPath = v },
+		"RKE2_CONFIG_DROP_IN_PATH":   func(o *options, v string) { o.RKE2ConfigDropInPath = v },
+		"KUBELET_DEFAULTS_PATH":      func(o *options, v string) { o.KubeletDefaultsPath = v },
+		"MICROK8S_KUBELET_ARGS_PATH": func(o *options, v string) { o.MicroK8sArgsPath = v },
 	}
 
 	for name, set := range fields {
@@ -800,5 +911,60 @@ func TestInstallRejectsARootMarkerBeforeTouchingTheHost(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("install() wrote %d entries to the host root, want none", len(entries))
+	}
+}
+
+func TestValidateOptionsRejectsPathsThatBreakTheFilesTheyGoInto(t *testing.T) {
+	base := options{
+		HostRoot:        "/host",
+		SourceBinary:    "/usr/local/bin/credential-provider-harbor",
+		BinaryName:      providerName,
+		BinDir:          "/usr/local/bin/credential-providers",
+		ConfigPath:      "/etc/kubernetes/credential-providers/config.yaml",
+		ConfigFormat:    "yaml",
+		MatchImages:     []string{"harbor.example.com"},
+		InstalledMarker: "/var/run/credential-provider-harbor-installed",
+		InstallID:       standaloneInstallID,
+	}
+
+	if err := validateOptions(base); err != nil {
+		t.Fatalf("validateOptions() on ordinary paths: %v", err)
+	}
+
+	// Each of these ends up inside a systemd Environment= line, a kind
+	// ExecStart line, a YAML drop-in, the MicroK8s arguments file, or the AKS
+	// KUBELET_FLAGS assignment, and breaks at least one of them. systemd
+	// expands $VAR in ExecStart and reads % as a specifier escape.
+	//
+	// The subtest name is the character under test rather than the path, so
+	// that -run patterns and failure output stay readable: the paths contain
+	// spaces, quotes and a newline.
+	for _, tt := range []struct {
+		name string
+		path string
+	}{
+		{"space", `/opt/a b/providers`},
+		{"tab", "/opt/a\tb/providers"},
+		{"newline", "/opt/new\nline/providers"},
+		{"single quote", `/opt/it's/providers`},
+		{"double quote", `/opt/say"hi/providers`},
+		{"backslash", `/opt/back\slash/providers`},
+		{"dollar", `/opt/$HOME/providers`},
+		{"percent", `/opt/%i/providers`},
+	} {
+		t.Run("binDir with a "+tt.name, func(t *testing.T) {
+			opts := base
+			opts.BinDir = tt.path
+			if err := validateOptions(opts); err == nil {
+				t.Fatalf("validateOptions() on BinDir %q returned nil error, want an unsafe path error", tt.path)
+			}
+		})
+		t.Run("configPath with a "+tt.name, func(t *testing.T) {
+			opts := base
+			opts.ConfigPath = tt.path
+			if err := validateOptions(opts); err == nil {
+				t.Fatalf("validateOptions() on ConfigPath %q returned nil error, want an unsafe path error", tt.path)
+			}
+		})
 	}
 }

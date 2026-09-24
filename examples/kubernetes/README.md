@@ -14,9 +14,9 @@ Pick your distribution. The pages differ because distributions disagree about wh
 | k3d | One `helm install`, plus an API server audience at cluster creation | [`k3d/`](k3d/) |
 | kind | One `helm install`, sometimes plus an `ExecStart` override | [`kind/`](kind/) |
 | GKE Standard | One `helm install`, but nodes lose it on replacement | [`gke/`](gke/) |
-| RKE2 | Chart installs the files, you add two lines to the RKE2 config | [`rke2/`](rke2/) |
-| MicroK8s | Chart installs the files, you add two kubelet arguments | [`microk8s/`](microk8s/) |
-| AKS | Chart installs the files, you patch `KUBELET_FLAGS` per node | [`aks/`](aks/) |
+| RKE2 | One `helm install`, plus an API server audience on the server nodes | [`rke2/`](rke2/) |
+| MicroK8s | One `helm install`; a snap refresh undoes it | [`microk8s/`](microk8s/) |
+| AKS | One `helm install` | [`aks/`](aks/) |
 | Talos Linux | System extension, not the chart | [`../talos/`](../talos/) |
 | OpenShift | Not supported; the page explains what it would take | [`openshift/`](openshift/) |
 | GKE Autopilot | Not possible. No privileged host access, no kubelet control | — |
@@ -59,7 +59,7 @@ sub == system:serviceaccount:<namespace>:<service-account>
 
 For the default service account in the default namespace, `sub` is `system:serviceaccount:default:default`.
 
-The Harbor side is documented in full at https://container-registry.com/docs/.
+The Harbor side is documented in full: [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/) covers the IDP, the JWKS handling and the claim rules, and [Authenticating a Workload with Federated Identity](https://container-registry.com/docs/2.16/user-manual/images/authenticating-a-workload-with-federated-identity/) covers presenting the token.
 
 ## Shared Files
 
@@ -70,6 +70,7 @@ The Harbor side is documented in full at https://container-registry.com/docs/.
 | [`pod-example.yaml`](pod-example.yaml) | A pod that pulls from Harbor with no `imagePullSecrets` |
 | [`k3d-config.yaml`](k3d-config.yaml) | k3d cluster config with the audience allowed |
 | [`k3s-config.yaml`](k3s-config.yaml) | The k3s config drop-in the installer writes |
+| [`rke2/config.yaml`](rke2/config.yaml) | The RKE2 config drop-in the installer writes |
 | [`kind-kubelet-systemd-dropin.conf`](kind-kubelet-systemd-dropin.conf) | The kind `ExecStart` override, for reference |
 
-The first four use `harbor.example.com` as the registry host and the audience; replace it with yours. The last two are kubelet wiring only and contain no registry reference. `pod-example.yaml` also needs an image that exists in your Harbor, or the pod sits in `ImagePullBackOff` and looks like a credential provider failure.
+The first four use `harbor.example.com` as the registry host and the audience; replace it with yours. The last three are kubelet wiring only and contain no registry reference. `pod-example.yaml` also needs an image that exists in your Harbor, or the pod sits in `ImagePullBackOff` and looks like a credential provider failure.

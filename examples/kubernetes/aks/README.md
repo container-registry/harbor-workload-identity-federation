@@ -1,16 +1,26 @@
 # Azure Kubernetes Service
 
-Partly supported. The chart installs the binary and the credential provider config onto AKS nodes. It cannot point kubelet at them, so there is a manual node step.
+One `helm install`. The `aks` profile handles the part that used to be a manual step on every node.
 
-## Why the Chart Cannot Finish the Job
+## Why AKS Needs Its Own Profile
 
-The installer's `generic` profile writes a systemd drop-in that sets `KUBELET_EXTRA_ARGS`. That works on kubeadm nodes because the kubeadm unit expands `$KUBELET_EXTRA_ARGS`. The AKS kubelet unit does not. It builds its command line from `$KUBELET_FLAGS`, which comes from `/etc/default/kubelet`, so a drop-in setting `KUBELET_EXTRA_ARGS` is written, is valid, and does nothing.
+The `generic` profile writes a systemd drop-in that sets `KUBELET_EXTRA_ARGS`. That works on kubeadm nodes because the kubeadm unit expands it. The AKS kubelet unit does not: it builds its command line from `$KUBELET_FLAGS`, which comes from `/etc/default/kubelet`. A drop-in setting `KUBELET_EXTRA_ARGS` on an AKS node is written, is valid, and has no effect.
 
 AKS also has no supported API for adding arbitrary kubelet flags. [Custom node configuration](https://learn.microsoft.com/en-us/azure/aks/custom-node-configuration) covers a fixed list of settings, and the two image credential provider flags are not on it.
 
-## What To Do
+So the `aks` profile edits `/etc/default/kubelet` directly. It rewrites the active `KUBELET_FLAGS` assignment to carry the two flags, keeps every other flag in place, and backs the file up first. Running it again with different paths replaces its own earlier values rather than appending a second copy.
 
-**1. Install the chart with kubelet wiring off:**
+## The API Server Has To Accept the Audience
+
+kubelet asks the API server for a token whose audience is `registry.audience`. AKS sets `--api-audiences` to the cluster's service account issuer and does not expose it as a setting, so pick an audience the API server will actually mint.
+
+```bash
+kubectl create token default --audience=harbor.example.com --duration=10m
+```
+
+If that fails, the audience is not accepted and no amount of correct node setup will help. AKS clusters with [OIDC issuer](https://learn.microsoft.com/en-us/azure/aks/use-oidc-issuer) enabled accept the issuer URL as an audience; use that as `registry.audience`, and configure the Harbor Federated IDP with the same string.
+
+## Install
 
 ```bash
 helm upgrade --install credential-provider-harbor \
@@ -23,25 +33,18 @@ helm upgrade --install credential-provider-harbor \
 kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 ```
 
-**2. Add the flags on each node** with [`patch-kubelet-flags.sh`](patch-kubelet-flags.sh). It appends to `KUBELET_FLAGS`, keeps a backup, and restarts kubelet. It does nothing on a second run.
-
-```bash
-kubectl debug node/<node> -it --image=busybox -- chroot /host sh
-# then run the script contents
-```
-
-For a whole node pool, the durable way is a VMSS custom script extension or a custom node image, so that scale-up nodes come up already configured. Nodes created after you ran the script by hand will not have it.
-
-**3. Confirm:**
+## Confirm
 
 ```bash
 ./scripts/verify-node-install.sh
 ```
 
-## The Scale-Up Problem
+## Node Image Upgrades and Scale-Out
 
-Every AKS node image upgrade and every scale-out event produces a node without the kubelet flags. The DaemonSet reinstalls the binary and config, but the flags stay missing until someone runs the script again. Treat this as "works, with an operational cost" rather than "supported", until either AKS exposes the flags or the installer learns to patch `/etc/default/kubelet`.
+A new AKS node comes up with a stock `/etc/default/kubelet`. Because the DaemonSet runs on every node, it patches that file and restarts kubelet as the node joins, which is what the old per-node script could not do. The window between the node going Ready and the installer finishing is real but short; a pod that lands in it retries the pull.
 
-## Contributing
+Node image upgrades behave the same way: the upgraded node is a new node, and the DaemonSet treats it as one.
 
-An `aks` profile would fix this properly: a `configureKubeletDefaults` branch in the installer that appends to `KUBELET_FLAGS` in `/etc/default/kubelet`, which is what the script above does by hand. That is a small change next to `configureSystemdKubelet`. See [CONTRIBUTING.md](../../../CONTRIBUTING.md).
+## If the Install Fails
+
+The installer stops with an error when `/etc/default/kubelet` has no active `KUBELET_FLAGS` assignment, rather than reporting success on a node it did not change. A node image that does not use `KUBELET_FLAGS` is not one this profile can wire, so set `kubelet.configure=false` and add the flags however that image expects them.

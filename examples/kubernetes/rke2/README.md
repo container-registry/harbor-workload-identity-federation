@@ -1,15 +1,14 @@
 # RKE2
 
-RKE2 runs kubelet inside the `rke2-agent` process rather than as its own systemd unit. There is no `kubelet.service` to drop a file into, so the chart cannot wire kubelet here. It can still place the binary and the config; you add two lines to the RKE2 config.
+One `helm install` on the node side, plus an API server setting on the server nodes.
 
-This is the same shape as k3s, but k3s has a profile and RKE2 does not yet. Until it does, use `profile=custom`.
-
+RKE2 runs kubelet inside the `rke2-agent` process rather than as its own systemd unit, so there is no `kubelet.service` to drop a file into. The `rke2` profile writes `/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml` instead, which is where RKE2 reads `kubelet-arg` from, and restarts the supervisor so it takes effect. [`config.yaml`](config.yaml) shows the file it writes.
 
 ## The API Server Has To Accept the Audience
 
 kubelet asks the API server for a token whose audience is `registry.audience`. The API server only mints audiences listed in `--api-audiences`, so if yours is not there the request is refused before the provider is called at all, and no amount of correct node setup fixes it.
 
-On RKE2 this is a server-node setting:
+On RKE2 this is a server-node setting, and the chart does not touch it:
 
 ```yaml
 # /etc/rancher/rke2/config.yaml.d/99-harbor-audience.yaml, on every server node
@@ -19,21 +18,7 @@ kube-apiserver-arg:
 
 Restart `rke2-server` after adding it. Keep the default cluster audience in the list; dropping it breaks in-cluster service account tokens.
 
-## Order Matters
-
-The config drop-in has to be on the node before the agent restarts, otherwise the restart the installer performs is wasted and you need a second one.
-
-**1. On every node**, drop in the kubelet arguments:
-
-```bash
-sudo mkdir -p /etc/rancher/rke2/config.yaml.d
-sudo cp examples/kubernetes/rke2/config.yaml \
-  /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml
-```
-
-If you manage RKE2 config with a single `/etc/rancher/rke2/config.yaml`, merge the `kubelet-arg` entries into it instead. RKE2 merges `config.yaml.d` entries for list keys, but a `kubelet-arg` list in the main file and in a drop-in do not always combine the way you expect; check `journalctl -u rke2-agent` after the restart.
-
-**2. Install the chart:**
+## Install
 
 ```bash
 helm upgrade --install credential-provider-harbor \
@@ -46,38 +31,32 @@ helm upgrade --install credential-provider-harbor \
 kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 ```
 
-On server nodes, override the service name:
+The installer restarts `rke2-agent` on worker nodes and `rke2-server` on server nodes, picking whichever unit is installed. A node that has both units restarts both, since each runs a kubelet of its own and the one left alone would keep the flags it started with. Override it with `--set kubelet.serviceName=...` if your nodes name it differently. A node carrying neither unit fails the install with that instruction, rather than restarting a unit that is not there.
+
+## If You Already Set `kubelet-arg` Yourself
+
+Read this one before installing. RKE2 reads `/etc/rancher/rke2/config.yaml` first and then `config.yaml.d/*.yaml` in alphabetical order, and for a repeated key the last file wins outright. It does not merge the two lists. So the installer's `99-credential-provider-harbor.yaml` sorts last, the credential provider flags do apply, and **any `kubelet-arg` entries of your own are replaced by them.**
+
+If you have none, there is nothing to do.
+
+If you have some, the thing that does not work is putting them in a drop-in that sorts after `99-`. Under the same rule, that file replaces the installer's list and takes the two provider flags out with it, silently. Two ways round it, and they are not equally good:
+
+- **`kubelet-arg+:` in the later file.** It appends to the earlier value rather than replacing it, so the installer keeps owning the two provider entries. Prefer this one.
+- **Both sets of entries listed together under `kubelet-arg:` in the later file.** This works, and it takes the provider flags out of the installer's hands. `99-credential-provider-harbor.yaml` is rewritten with the current `credentialProvider.binDir` on every run, but your later file still wins, so a reinstall with a different path leaves the cluster on the old one with no error. If you go this way, keep the copies in step.
+
+The third option is to keep the installer out of the kubelet arguments entirely:
 
 ```bash
---set kubelet.serviceName=rke2-server
+--set kubelet.configure=false
 ```
 
-A cluster with both needs two releases with different names and complementary selectors, because one restarts `rke2-server` and the other `rke2-agent`:
+and merge the two entries from [`config.yaml`](config.yaml) into your own list by hand. The installer itself writes plain `kubelet-arg:` rather than `kubelet-arg+:`, because a key an older parser does not recognize fails silently, and a visible replacement is the better of the two failures.
+
+Check what the supervisor actually got after the restart:
 
 ```bash
-# server nodes
-helm upgrade --install credential-provider-harbor-server \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
-  --namespace kube-system \
-  -f examples/kubernetes/rke2/values.yaml \
-  --set registry.host=harbor.example.com \
-  --set registry.audience=harbor.example.com \
-  --set kubelet.serviceName=rke2-server \
-  --set-string nodeSelector."node-role\.kubernetes\.io/control-plane"=true
-
-# worker nodes
-helm upgrade --install credential-provider-harbor-agent \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
-  --namespace kube-system \
-  -f examples/kubernetes/rke2/values.yaml \
-  --set registry.host=harbor.example.com \
-  --set registry.audience=harbor.example.com \
-  --set kubelet.serviceName=rke2-agent \
-  --set 'affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key=node-role.kubernetes.io/control-plane' \
-  --set 'affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].operator=DoesNotExist'
+journalctl -u rke2-agent | grep -i kubelet-arg   # rke2-server on a server node
 ```
-
-A `nodeSelector` cannot express "not a control plane node", which is why the worker release uses `affinity` instead.
 
 ## Check It Took
 
@@ -85,12 +64,8 @@ A `nodeSelector` cannot express "not a control plane node", which is why the wor
 ./scripts/verify-node-install.sh
 ```
 
-The flags should appear on the `kubelet` arguments inside the rke2 process tree:
+The flags do not appear on any command line here: the supervisor passes them to the embedded kubelet from the config file. The verify script knows that and reads the RKE2 config drop-ins. To check by hand:
 
 ```bash
-ps -ef | grep -o 'image-credential-provider[^ ]*'
+grep -r image-credential-provider /etc/rancher/rke2/
 ```
-
-## Contributing a Profile
-
-An `rke2` profile would remove the manual step: it needs a `configureRKE2` branch in the installer that writes `/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml`, the same way `configureK3s` already writes the k3s drop-in, plus the path defaults. See [CONTRIBUTING.md](../../../CONTRIBUTING.md).

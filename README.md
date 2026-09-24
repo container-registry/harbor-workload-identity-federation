@@ -84,8 +84,11 @@ Select a platform profile when the default generic kubelet paths are not right f
 | `generic` | kubeadm/systemd nodes | `/etc/kubernetes/credential-providers/config.yaml` |
 | `eks` or `aws` | Amazon EKS AL2023 nodes | `/etc/eks/image-credential-provider/config.json` |
 | `k3s` or `k3d` | k3s/k3d nodes | `/var/lib/rancher/credentialprovider/config.yaml` |
+| `rke2` | RKE2 server and agent nodes | `/var/lib/rancher/credentialprovider/config.yaml` |
 | `kind` | KIND node containers | `/var/lib/kubelet/credential-provider-config.yaml` |
 | `gke` | GKE Standard best-effort | generic kubelet paths |
+| `aks` | AKS nodes | generic kubelet paths |
+| `microk8s` | MicroK8s nodes | `/var/snap/microk8s/common/credentialprovider/config.yaml` |
 | `custom` | Explicit paths via values | user-provided |
 
 Examples:

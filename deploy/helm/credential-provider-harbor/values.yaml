@@ -19,7 +19,8 @@ nameOverride: ""
 # -- Override full release name
 fullnameOverride: ""
 
-# -- Installation profile. Supported: generic, eks, aws, k3s, k3d, kind, gke, custom.
+# -- Installation profile. Supported: generic, eks, aws, k3s, k3d, rke2, kind,
+# gke, aks, microk8s, custom.
 profile: generic
 
 # Harbor registry configuration
@@ -84,6 +85,14 @@ kubelet:
   forceExecStartOverride: false
   # -- Override k3s config drop-in path for k3s/k3d profiles.
   k3sConfigDropInPath: ""
+  # -- Override the RKE2 config drop-in path for the rke2 profile.
+  rke2ConfigDropInPath: ""
+  # -- Override the kubelet EnvironmentFile patched for the aks profile.
+  # AKS builds the kubelet command line from KUBELET_FLAGS in this file.
+  kubeletDefaultsPath: ""
+  # -- Override the MicroK8s kubelet arguments file for the microk8s profile.
+  # Reset by a snap refresh, which is why the DaemonSet rewrites it.
+  microk8sArgsPath: ""
 
 nodeAudienceRbac:
   # -- Create RBAC that allows kubelets to request service account tokens for registry.audience
