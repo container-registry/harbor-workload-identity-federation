@@ -9,7 +9,7 @@ The chart runs a privileged DaemonSet. On each node it copies the credential pro
 - Kubernetes 1.34 or newer. The chart declares `kubeVersion: ">=1.34.0-0"`. Service account tokens for image credential providers ([KEP-4412](https://github.com/kubernetes/enhancements/tree/master/keps/sig-auth/4412-projected-service-account-tokens-for-kubelet-image-credential-providers)) landed in 1.34.
 - Nodes you can write to. GKE Autopilot is out, because it blocks privileged host access.
 - **Nodes allowed to ask for your audience.** kubelet asks for a token whose audience is `registry.audience`, and the API server issues a node a token for an audience like that only if the node is authorized for `request-serviceaccounts-token-audience` on it. The chart creates that RBAC (`nodeAudienceRbac`), so there is nothing else to set up unless you turn it off. The audience does not belong in the API server's `--api-audiences`: that flag lists what the API server accepts on tokens presented to it, and adding your registry there makes a token meant for Harbor work as a cluster credential too.
-- A Harbor Federated Identity Provider configured for the cluster issuer, and a federated robot account whose claim rules match the tokens the cluster issues.
+- The cluster issuer added to Harbor as a Trusted Issuer, and a federated robot account whose claim rules match the tokens the cluster issues.
 
 ## Install
 
@@ -71,7 +71,7 @@ On `kind`, check that the live kubelet command line inside the node container ha
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `registry.audience` | `registry.host` | Token audience. Must match the audience configured in the Harbor Federated IDP exactly. |
+| `registry.audience` | `registry.host` | Token audience. Must match the audience configured in the Harbor Trusted Issuer exactly. |
 | `registry.matchImages` | `[registry.host]` | Image patterns the provider answers for. |
 | `registry.cacheDuration` | `1h` | How long kubelet caches credentials. |
 | `registry.username` | `jwt` | Basic auth username Harbor expects alongside the token. |
@@ -190,4 +190,4 @@ Once those nodes are Ready, label the next batch. Labelling a node creates its i
 
 ## Harbor Side
 
-The cluster half is only half the setup. In Harbor, configure a Federated Identity Provider with the cluster's issuer URL and JWKS, then create a federated robot account whose claim rules match the tokens your cluster mints, usually on `iss`, `aud`, and `sub`. The audience there and `registry.audience` here have to be the same string. The walkthrough is [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).
+The cluster half is only half the setup. In Harbor, configure a Trusted Issuer with the cluster's issuer URL and JWKS, then create a federated robot account whose claim rules match the tokens your cluster mints, usually on `iss`, `aud`, and `sub`. The audience there and `registry.audience` here have to be the same string. The walkthrough is [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).

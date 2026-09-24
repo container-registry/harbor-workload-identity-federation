@@ -6,7 +6,7 @@
 #
 # The audience goes in the `resources:` field below (NOT resourceNames). That
 # string MUST equal the audience used in the kubelet CredentialProviderConfig
-# (tokenAttributes.serviceAccountTokenAudience) and on the Harbor Federated IDP.
+# (tokenAttributes.serviceAccountTokenAudience) and on the Harbor Trusted Issuer.
 # Replace harbor.example.com with that audience value.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

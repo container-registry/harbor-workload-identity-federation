@@ -61,7 +61,7 @@ GKE's issuer is `https://container.googleapis.com/v1/projects/<project>/location
 kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
 ```
 
-It is publicly reachable, so the Harbor Federated IDP can validate online.
+It is publicly reachable, so the Harbor Trusted Issuer can validate online.
 
 ## Check It Took
 

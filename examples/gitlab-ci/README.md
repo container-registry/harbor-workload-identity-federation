@@ -4,7 +4,7 @@ This example uses GitLab CI OIDC `id_tokens` to authenticate to Harbor without s
 
 ## Harbor Setup
 
-Create a Harbor Federated IDP for your GitLab instance. For GitLab.com:
+Add your GitLab instance to Harbor as a Trusted Issuer. For GitLab.com:
 
 ```text
 OpenID configuration URL: https://gitlab.com/.well-known/openid-configuration
@@ -33,7 +33,7 @@ macfly4200.8gears.ch -> <your-registry-domain>
 library/image -> <your-project>/<your-image>
 ```
 
-The `id_tokens` audience must exactly match the Harbor Federated IDP audience:
+The `id_tokens` audience must exactly match the Harbor Trusted Issuer audience:
 
 ```yaml
 id_tokens:
@@ -41,7 +41,7 @@ id_tokens:
     aud: <your-registry-domain-or-url>
 ```
 
-The example writes Docker auth as `not-relevant:<OIDC-token>`. Harbor validates the token through the configured Federated IDP and maps it to the federated robot account.
+The example writes Docker auth as `not-relevant:<OIDC-token>`. Harbor validates the token through the configured Trusted Issuer and maps it to the federated robot account.
 
 ## BuildKit
 
@@ -59,4 +59,4 @@ The example prints only decoded JWT header and payload for debugging. Do not pri
 
 ## Harbor Side
 
-Configuring the Federated IDP and the robot account claim rules is documented at [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).
+Configuring the Trusted Issuer and the robot account claim rules is documented at [Federated Identity Provider for Workload Authentication](https://container-registry.com/docs/2.16/administration-manual/authentication-management/system-robot-accounts/federated-identity-provider-for-workload-authentication/).
