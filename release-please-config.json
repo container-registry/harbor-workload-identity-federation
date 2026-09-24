@@ -17,7 +17,10 @@
       "bump-minor-pre-major": true,
       "pull-request-title-pattern": "chore: release ${version}",
       "extra-files": [
-        "deploy/helm/credential-provider-harbor/Chart.yaml"
+        {
+          "type": "generic",
+          "path": "deploy/helm/credential-provider-harbor/Chart.yaml"
+        }
       ]
     },
     "deploy/helm/credential-provider-harbor": {
