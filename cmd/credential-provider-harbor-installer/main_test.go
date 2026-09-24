@@ -845,6 +845,13 @@ func TestValidateOptionsRejectsPathsThatNameADirectory(t *testing.T) {
 		"BIN_DIR":          func(o *options, v string) { o.BinDir = v },
 		"CONFIG_PATH":      func(o *options, v string) { o.ConfigPath = v },
 		"INSTALLED_MARKER": func(o *options, v string) { o.InstalledMarker = v },
+		// The profile paths are optional, and empty is how a profile that does
+		// not use one says so. Anything else is a file the installer writes.
+		"SYSTEMD_DROP_IN_PATH":       func(o *options, v string) { o.SystemdDropInPath = v },
+		"K3S_CONFIG_DROP_IN_PATH":    func(o *options, v string) { o.K3sConfigDropInPath = v },
+		"RKE2_CONFIG_DROP_IN_PATH":   func(o *options, v string) { o.RKE2ConfigDropInPath = v },
+		"KUBELET_DEFAULTS_PATH":      func(o *options, v string) { o.KubeletDefaultsPath = v },
+		"MICROK8S_KUBELET_ARGS_PATH": func(o *options, v string) { o.MicroK8sArgsPath = v },
 	}
 
 	for name, set := range fields {

@@ -436,8 +436,19 @@ func validateOptions(opts options) error {
 		"MICROK8S_KUBELET_ARGS_PATH": opts.MicroK8sArgsPath,
 	}
 	for name, path := range optionalPaths {
-		if path != "" && !filepath.IsAbs(path) {
+		if path == "" {
+			continue
+		}
+		if !filepath.IsAbs(path) {
 			return fmt.Errorf("%s must be an absolute path: %q", name, path)
+		}
+		// Each of these names a file a profile writes, so the rule for the
+		// named paths above holds here too. Left unchecked, a directory here
+		// fails in the profile writer, which runs after the binary and the
+		// config are on the node and after the marker has been removed: the
+		// node is then half-installed and reads as not installed at all.
+		if path == "/" || strings.HasSuffix(path, "/") {
+			return fmt.Errorf("%s must name a path inside a parent directory, not %q", name, path)
 		}
 	}
 	// The readiness probe matches the marker's first line whole, so an install
