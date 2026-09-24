@@ -55,11 +55,14 @@ func TestDetectRKE2ServicesCoversEveryInstalledUnit(t *testing.T) {
 		units    []string
 		fallback string
 		want     []string
+		// A node with neither unit is not an rke2 node, and the run says so
+		// rather than restarting a unit it hopes is there.
+		wantErr bool
 	}{
 		{name: "server node", units: []string{"usr/local/lib/systemd/system/rke2-server.service"}, want: []string{"rke2-server"}},
 		{name: "agent node", units: []string{"etc/systemd/system/rke2-agent.service"}, want: []string{"rke2-agent"}},
 		{name: "rpm install", units: []string{"usr/lib/systemd/system/rke2-server.service"}, want: []string{"rke2-server"}},
-		{name: "neither installed", want: []string{"rke2-agent"}},
+		{name: "neither installed", wantErr: true},
 		{name: "an explicit override wins", units: []string{"etc/systemd/system/rke2-agent.service"}, fallback: "rke2-server", want: []string{"rke2-server"}},
 		{
 			// Both kubelets run, and restarting one of them would leave the
@@ -86,15 +89,35 @@ func TestDetectRKE2ServicesCoversEveryInstalledUnit(t *testing.T) {
 				}
 			}
 
-			got := detectRKE2Services(options{HostRoot: tmpDir}, tt.fallback)
-			if !slices.Equal(got, tt.want) {
-				t.Fatalf("detectRKE2Services() = %v, want %v", got, tt.want)
+			got, err := detectRKE2Services(options{HostRoot: tmpDir}, tt.fallback)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("detectRKE2Services() = %v, want an error naming the missing units", got)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("detectRKE2Services() error: %v", err)
+				}
+				if !slices.Equal(got, tt.want) {
+					t.Fatalf("detectRKE2Services() = %v, want %v", got, tt.want)
+				}
 			}
 
 			// restartKubelet asks through kubeletServices, so the profile
-			// wiring has to carry every unit through, not just the first.
+			// wiring has to carry every unit through, not just the first, and
+			// the missing-unit error with it.
 			opts := options{Profile: "rke2", HostRoot: tmpDir, KubeletService: tt.fallback}
-			if got := kubeletServices(opts); !slices.Equal(got, tt.want) {
+			got, err = kubeletServices(opts)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("kubeletServices() = %v, want an error naming the missing units", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("kubeletServices() error: %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
 				t.Fatalf("kubeletServices() = %v, want %v", got, tt.want)
 			}
 		})

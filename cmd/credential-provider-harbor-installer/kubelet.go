@@ -378,7 +378,10 @@ func restartKubelet(opts options) error {
 		return nil
 	}
 
-	services := kubeletServices(opts)
+	services, err := kubeletServices(opts)
+	if err != nil {
+		return err
+	}
 
 	fmt.Printf("[INFO] Restarting %s\n", strings.Join(services, " "))
 	if opts.ConfigureKubelet && opts.Profile != "eks" && opts.Profile != "aws" {
@@ -391,17 +394,17 @@ func restartKubelet(opts options) error {
 
 // kubeletServices lists the units that have to come back before the node runs
 // against the flags this install wrote.
-func kubeletServices(opts options) []string {
+func kubeletServices(opts options) ([]string, error) {
 	switch opts.Profile {
 	case "k3s", "k3d":
-		return []string{detectK3sService(opts, opts.KubeletService)}
+		return []string{detectK3sService(opts, opts.KubeletService)}, nil
 	case "rke2":
 		return detectRKE2Services(opts, opts.KubeletService)
 	}
 	if opts.KubeletService == "" {
-		return []string{"kubelet"}
+		return []string{"kubelet"}, nil
 	}
-	return []string{opts.KubeletService}
+	return []string{opts.KubeletService}, nil
 }
 
 func systemctl(args ...string) error {
@@ -442,9 +445,9 @@ func detectK3sService(opts options, fallback string) string {
 // present. A node that has both runs two kubelets, and restarting one of them
 // would leave the other on the old flags, so both are returned and both are
 // restarted.
-func detectRKE2Services(opts options, fallback string) []string {
+func detectRKE2Services(opts options, fallback string) ([]string, error) {
 	if fallback != "" && fallback != "rke2-agent" {
-		return []string{fallback}
+		return []string{fallback}, nil
 	}
 	// Tarball installs land in /usr/local/lib/systemd/system, RPM installs in
 	// /usr/lib/systemd/system, and either may be overridden in /etc.
@@ -464,7 +467,14 @@ func detectRKE2Services(opts options, fallback string) []string {
 		}
 	}
 	if len(services) == 0 {
-		return []string{"rke2-agent"}
+		// Guessing rke2-agent here would send the run into a systemctl
+		// failure that says the unit does not exist, which reads as a broken
+		// installer rather than as a node the profile does not fit. The files
+		// are already written at this point, so the message has to say what
+		// to do next.
+		return nil, errors.New("no rke2-server.service or rke2-agent.service on this node: " +
+			"profile=rke2 expects one of them. Set kubelet.serviceName (KUBELET_SERVICE) to the unit " +
+			"that runs kubelet here, or use the profile that matches this node")
 	}
-	return services
+	return services, nil
 }
