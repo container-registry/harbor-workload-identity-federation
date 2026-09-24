@@ -254,10 +254,11 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 		}, nil
 	case "rke2":
 		return profileDefaults{
-			BinDir:               "/var/lib/rancher/credentialprovider/bin",
-			ConfigPath:           "/var/lib/rancher/credentialprovider/config.yaml",
-			ConfigFormat:         "yaml",
-			KubeletService:       "rke2-agent",
+			BinDir:       "/var/lib/rancher/credentialprovider/bin",
+			ConfigPath:   "/var/lib/rancher/credentialprovider/config.yaml",
+			ConfigFormat: "yaml",
+			// No default service: detectRKE2Services asks systemd which
+			// unit this node runs.
 			RKE2ConfigDropInPath: "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml",
 		}, nil
 	case "kind":

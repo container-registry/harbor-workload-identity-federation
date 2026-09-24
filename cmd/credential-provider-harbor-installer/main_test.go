@@ -302,10 +302,11 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 			kubeletDefaults: "/etc/default/kubelet",
 		},
 		{
-			profile:        "rke2",
-			binDir:         "/var/lib/rancher/credentialprovider/bin",
-			configPath:     "/var/lib/rancher/credentialprovider/config.yaml",
-			kubeletService: "rke2-agent",
+			profile:    "rke2",
+			binDir:     "/var/lib/rancher/credentialprovider/bin",
+			configPath: "/var/lib/rancher/credentialprovider/config.yaml",
+			// Left empty on purpose: systemd decides, see detectRKE2Services.
+			kubeletService: "",
 			rke2DropIn:     "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml",
 		},
 		{

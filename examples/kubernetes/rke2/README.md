@@ -31,7 +31,7 @@ helm upgrade --install credential-provider-harbor \
 kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 ```
 
-The installer restarts `rke2-agent` on worker nodes and `rke2-server` on server nodes, picking whichever unit is installed. A node that has both units restarts both, since each runs a kubelet of its own and the one left alone would keep the flags it started with. Override it with `--set kubelet.serviceName=...` if your nodes name it differently. A node carrying neither unit fails the install with that instruction, rather than restarting a unit that is not there.
+The installer restarts the supervisor the node runs, asking systemd which of `rke2-server` and `rke2-agent` is active or enabled. It cannot go by the unit files: the tarball ships both and `install.sh` moves both into place, so `rke2-server.service` sits on a plain worker too, and restarting everything installed would start a control plane there. Override the choice with `--set kubelet.serviceName=...` if your nodes name the unit differently. A node where systemd runs neither fails the install with that instruction rather than guessing.
 
 ## If You Already Set `kubelet-arg` Yourself
 
