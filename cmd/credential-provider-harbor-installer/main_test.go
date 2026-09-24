@@ -712,6 +712,14 @@ func TestInstallRejectsARootMarkerBeforeTouchingTheHost(t *testing.T) {
 	if err == nil {
 		t.Fatal("install() returned nil error, want a marker path error")
 	}
+	// The message, not just the failure: reading "/" as a file or removing it
+	// fails too, and either would end the run with an empty host root and no
+	// restart. Only validateOptions names the variable and says what is wrong
+	// with it, so this is what tells the two apart.
+	want := `INSTALLED_MARKER must name a path inside a parent directory, not "/"`
+	if err.Error() != want {
+		t.Fatalf("install() error = %q, want %q", err, want)
+	}
 	if restarted {
 		t.Fatal("install() restarted kubelet despite an unusable marker path")
 	}
