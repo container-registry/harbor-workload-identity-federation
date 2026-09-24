@@ -59,18 +59,6 @@ kubectl apply -f examples/kubernetes/pod-example.yaml
 
 ## Audience
 
-The API server has to be willing to issue tokens for your Harbor audience. On kind, pass it at cluster creation:
-
-```yaml
-# kind-config.yaml
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-kubeadmConfigPatches:
-  - |
-    kind: ClusterConfiguration
-    apiServer:
-      extraArgs:
-        api-audiences: "https://kubernetes.default.svc.cluster.local,harbor.example.com"
-```
+kind needs nothing passed at cluster creation for this. kubelet's request for a Harbor token is authorized by the node audience RBAC the chart creates. The API server's `--api-audiences` governs the tokens it accepts, not the ones it issues, so your registry does not belong there.
 
 For Harbor to validate tokens from a local kind cluster, the cluster issuer has to be reachable from Harbor, or the Federated IDP has to be configured with inline JWKS. The [Talos example](../../talos/) has the offline JWKS recipe, which applies here too.

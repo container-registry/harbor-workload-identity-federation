@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/yaml"
@@ -49,30 +50,58 @@ func TestConfigureRKE2WritesTheKubeletArgDropIn(t *testing.T) {
 	}
 }
 
-func TestDetectRKE2ServicesCoversEveryInstalledUnit(t *testing.T) {
+func TestDetectRKE2ServicesPicksTheUnitTheNodeRuns(t *testing.T) {
+	// install.sh puts both unit files on every node, so the cases below
+	// install both and differ only in what systemd says it runs.
+	bothUnits := []string{
+		"usr/local/lib/systemd/system/rke2-server.service",
+		"usr/local/lib/systemd/system/rke2-agent.service",
+	}
+
 	tests := []struct {
 		name     string
 		units    []string
+		running  []string
 		fallback string
 		want     []string
-		// A node with neither unit is not an rke2 node, and the run says so
-		// rather than restarting a unit it hopes is there.
-		wantErr bool
+		// Neither running means the run says so rather than guessing.
+		wantErr string
 	}{
-		{name: "server node", units: []string{"usr/local/lib/systemd/system/rke2-server.service"}, want: []string{"rke2-server"}},
-		{name: "agent node", units: []string{"etc/systemd/system/rke2-agent.service"}, want: []string{"rke2-agent"}},
-		{name: "rpm install", units: []string{"usr/lib/systemd/system/rke2-server.service"}, want: []string{"rke2-server"}},
-		{name: "neither installed", wantErr: true},
-		{name: "an explicit override wins", units: []string{"etc/systemd/system/rke2-agent.service"}, fallback: "rke2-server", want: []string{"rke2-server"}},
+		{name: "server node", units: bothUnits, running: []string{"rke2-server.service"}, want: []string{"rke2-server"}},
+		{name: "agent node", units: bothUnits, running: []string{"rke2-agent.service"}, want: []string{"rke2-agent"}},
 		{
-			// Both kubelets run, and restarting one of them would leave the
-			// other on the flags it started with.
-			name: "a node running both units restarts both",
-			units: []string{
-				"etc/systemd/system/rke2-server.service",
-				"etc/systemd/system/rke2-agent.service",
-			},
-			want: []string{"rke2-server", "rke2-agent"},
+			name:    "rpm install",
+			units:   []string{"usr/lib/systemd/system/rke2-agent.service"},
+			running: []string{"rke2-agent.service"},
+			want:    []string{"rke2-agent"},
+		},
+		{
+			name:    "an override in /etc",
+			units:   []string{"etc/systemd/system/rke2-server.service"},
+			running: []string{"rke2-server.service"},
+			want:    []string{"rke2-server"},
+		},
+		{
+			// Enabled but stopped, or systemd out of reach. Either way a guess.
+			name:    "installed but running neither",
+			units:   bothUnits,
+			wantErr: "rke2-server or rke2-agent",
+		},
+		{name: "neither installed", wantErr: "no rke2-server.service or rke2-agent.service"},
+		{
+			name:     "an explicit override wins",
+			units:    bothUnits,
+			running:  []string{"rke2-agent.service"},
+			fallback: "rke2-server",
+			want:     []string{"rke2-server"},
+		},
+		{
+			// What the error above tells you to do, so rke2-agent has to work
+			// as an override like any other name.
+			name:     "rke2-agent asked for by name, running neither",
+			units:    bothUnits,
+			fallback: "rke2-agent",
+			want:     []string{"rke2-agent"},
 		},
 	}
 
@@ -88,11 +117,15 @@ func TestDetectRKE2ServicesCoversEveryInstalledUnit(t *testing.T) {
 					t.Fatalf("write unit: %v", err)
 				}
 			}
+			runsUnit := func(unit string) bool { return slices.Contains(tt.running, unit) }
 
-			got, err := detectRKE2Services(options{HostRoot: tmpDir}, tt.fallback)
-			if tt.wantErr {
+			got, err := detectRKE2Services(options{HostRoot: tmpDir}, tt.fallback, runsUnit)
+			if tt.wantErr != "" {
 				if err == nil {
-					t.Fatalf("detectRKE2Services() = %v, want an error naming the missing units", got)
+					t.Fatalf("detectRKE2Services() = %v, want an error", got)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("detectRKE2Services() error = %q, want it to mention %q", err, tt.wantErr)
 				}
 			} else {
 				if err != nil {
@@ -104,13 +137,12 @@ func TestDetectRKE2ServicesCoversEveryInstalledUnit(t *testing.T) {
 			}
 
 			// restartKubelet asks through kubeletServices, so the profile
-			// wiring has to carry every unit through, not just the first, and
-			// the missing-unit error with it.
+			// wiring has to carry the answer through, and the error with it.
 			opts := options{Profile: "rke2", HostRoot: tmpDir, KubeletService: tt.fallback}
-			got, err = kubeletServices(opts)
-			if tt.wantErr {
+			got, err = kubeletServices(opts, runsUnit)
+			if tt.wantErr != "" {
 				if err == nil {
-					t.Fatalf("kubeletServices() = %v, want an error naming the missing units", got)
+					t.Fatalf("kubeletServices() = %v, want an error", got)
 				}
 				return
 			}

@@ -27,15 +27,9 @@ The installer then restarts the k3s service. It detects whether the node runs `k
 
 ## Audience
 
-The API server must be willing to mint tokens for your Harbor audience. Add it to the k3s server arguments:
+The node has to be allowed to ask for a token with your Harbor audience. That permission is the node audience RBAC, which the chart creates by default, or apply it by hand from [`../rbac-audience.yaml`](../rbac-audience.yaml).
 
-```yaml
-# /etc/rancher/k3s/config.yaml
-kube-apiserver-arg:
-  - "api-audiences=https://kubernetes.default.svc.cluster.local,harbor.example.com"
-```
-
-Then apply the node audience RBAC, which the chart creates by default, or by hand from [`../rbac-audience.yaml`](../rbac-audience.yaml).
+Nothing goes in `kube-apiserver-arg` for this. `--api-audiences` lists the audiences the API server accepts on tokens presented to it, and it has no say in which audiences it hands out.
 
 ## Check It Took
 

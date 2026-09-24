@@ -11,10 +11,10 @@ Pick your distribution. The pages differ because distributions disagree about wh
 | kubeadm and other systemd nodes | One `helm install` | [`kubeadm/`](kubeadm/) |
 | Amazon EKS | One `helm install`; the AMI already sets the kubelet flags | [`eks/`](eks/) |
 | k3s | One `helm install` | [`k3s/`](k3s/) |
-| k3d | One `helm install`, plus an API server audience at cluster creation | [`k3d/`](k3d/) |
+| k3d | One `helm install` | [`k3d/`](k3d/) |
 | kind | One `helm install`, sometimes plus an `ExecStart` override | [`kind/`](kind/) |
 | GKE Standard | One `helm install`, but nodes lose it on replacement | [`gke/`](gke/) |
-| RKE2 | One `helm install`, plus an API server audience on the server nodes | [`rke2/`](rke2/) |
+| RKE2 | One `helm install` | [`rke2/`](rke2/) |
 | MicroK8s | One `helm install`; a snap refresh undoes it | [`microk8s/`](microk8s/) |
 | AKS | One `helm install` | [`aks/`](aks/) |
 | Talos Linux | System extension, not the chart | [`../talos/`](../talos/) |
@@ -31,7 +31,9 @@ Most failures are one of these, and they are easier to check than to debug.
 ./scripts/verify-node-install.sh
 ```
 
-**2. The API server will issue the audience.** The audience your provider asks for has to be in the API server's `--api-audiences`, and the node audience RBAC has to grant `request-serviceaccounts-token-audience` on it to `system:nodes`. The chart creates that RBAC; [`rbac-audience.yaml`](rbac-audience.yaml) is the standalone version.
+**2. The node may ask for the audience.** A node gets a token for your Harbor audience only if the node audience RBAC grants `request-serviceaccounts-token-audience` on it to `system:nodes`. The chart creates that RBAC; [`rbac-audience.yaml`](rbac-audience.yaml) is the standalone version. Nothing has to be added to the API server for it.
+
+If you set this up from an earlier version of these pages, you will have your registry in the API server's `--api-audiences` as well. Take it out. That flag lists the audiences the API server accepts on tokens presented to it, so leaving your registry there means a token Harbor is given also works as a cluster credential.
 
 **3. Harbor expects the same audience string.** The audience is just an agreed identifier. It does not have to be a domain. What matters is that the same value appears in the kubelet config, the RBAC, and the Harbor Federated IDP. Using the registry hostname makes it obvious who the token is for, which is why the examples do that.
 
@@ -68,7 +70,7 @@ The Harbor side is documented in full: [Federated Identity Provider for Workload
 | [`k8s_credential_provider_config.yaml`](k8s_credential_provider_config.yaml) | A kubelet `CredentialProviderConfig`, for when you install by hand instead of with the chart |
 | [`rbac-audience.yaml`](rbac-audience.yaml) | The node audience RBAC, standalone |
 | [`pod-example.yaml`](pod-example.yaml) | A pod that pulls from Harbor with no `imagePullSecrets` |
-| [`k3d-config.yaml`](k3d-config.yaml) | k3d cluster config with the audience allowed |
+| [`k3d-config.yaml`](k3d-config.yaml) | k3d cluster config with the provider mount points |
 | [`k3s-config.yaml`](k3s-config.yaml) | The k3s config drop-in the installer writes |
 | [`rke2/config.yaml`](rke2/config.yaml) | The RKE2 config drop-in the installer writes |
 | [`kind-kubelet-systemd-dropin.conf`](kind-kubelet-systemd-dropin.conf) | The kind `ExecStart` override, for reference |

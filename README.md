@@ -671,10 +671,6 @@ options:
       - arg: --disable=traefik
         nodeFilters:
           - server:*
-      # Allow your registry as an audience for service account tokens
-      - arg: --kube-apiserver-arg=api-audiences=https://kubernetes.default.svc.cluster.local,<your-registry-domain>
-        nodeFilters:
-          - server:*
 ```
 
 See example files in [`examples/kubernetes/`](examples/kubernetes/), and [`examples/kubernetes/k3d/`](examples/kubernetes/k3d/) for the k3d walkthrough.

@@ -1,22 +1,12 @@
 # RKE2
 
-One `helm install` on the node side, plus an API server setting on the server nodes.
+One `helm install`, on server and worker nodes alike.
 
 RKE2 runs kubelet inside the `rke2-agent` process rather than as its own systemd unit, so there is no `kubelet.service` to drop a file into. The `rke2` profile writes `/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml` instead, which is where RKE2 reads `kubelet-arg` from, and restarts the supervisor so it takes effect. [`config.yaml`](config.yaml) shows the file it writes.
 
-## The API Server Has To Accept the Audience
+## Audience
 
-kubelet asks the API server for a token whose audience is `registry.audience`. The API server only mints audiences listed in `--api-audiences`, so if yours is not there the request is refused before the provider is called at all, and no amount of correct node setup fixes it.
-
-On RKE2 this is a server-node setting, and the chart does not touch it:
-
-```yaml
-# /etc/rancher/rke2/config.yaml.d/99-harbor-audience.yaml, on every server node
-kube-apiserver-arg:
-  - "api-audiences=https://kubernetes.default.svc.cluster.local,harbor.example.com"
-```
-
-Restart `rke2-server` after adding it. Keep the default cluster audience in the list; dropping it breaks in-cluster service account tokens.
+kubelet asks the API server for a token whose audience is `registry.audience`. What decides whether it gets one is the node audience RBAC, which the chart creates. There is no server-node setting to add, and in particular the audience does not go in `kube-apiserver-arg` as `--api-audiences`: that flag lists what the API server accepts on tokens presented to it, not what it issues.
 
 ## Install
 
@@ -31,7 +21,7 @@ helm upgrade --install credential-provider-harbor \
 kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 ```
 
-The installer restarts `rke2-agent` on worker nodes and `rke2-server` on server nodes, picking whichever unit is installed. A node that has both units restarts both, since each runs a kubelet of its own and the one left alone would keep the flags it started with. Override it with `--set kubelet.serviceName=...` if your nodes name it differently. A node carrying neither unit fails the install with that instruction, rather than restarting a unit that is not there.
+The installer restarts the supervisor the node runs, asking systemd which of `rke2-server` and `rke2-agent` is active or enabled. It cannot go by the unit files: the tarball ships both and `install.sh` moves both into place, so `rke2-server.service` sits on a plain worker too, and restarting everything installed would start a control plane there. Override the choice with `--set kubelet.serviceName=...` if your nodes name the unit differently. A node where systemd runs neither fails the install with that instruction rather than guessing.
 
 ## If You Already Set `kubelet-arg` Yourself
 

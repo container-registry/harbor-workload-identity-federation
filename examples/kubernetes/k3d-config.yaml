@@ -20,7 +20,3 @@ options:
       - arg: --disable=traefik
         nodeFilters:
           - server:*
-      # Allow the harbor.example.com audience for service account tokens
-      - arg: --kube-apiserver-arg=api-audiences=https://kubernetes.default.svc.cluster.local,harbor.example.com
-        nodeFilters:
-          - server:*

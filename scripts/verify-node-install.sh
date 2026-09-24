@@ -146,7 +146,8 @@ scan_node_kubelet_config() {
 # config.yaml.d/, and on k3s and RKE2 the drop-in replaces the key, so the
 # first match is whatever the node was set to before the installer ran. A
 # repeated flag on a kubelet command line works the same way: the last one is
-# the one kubelet uses.
+# the one kubelet uses. An empty last match is an answer too: a later file
+# dropped the flag, and the node is not configured.
 extract_setting() {
   local key=$1 text=$2
   printf '%s\n' "${text}" | sed '/^[[:space:]]*#/d' | sed -n "

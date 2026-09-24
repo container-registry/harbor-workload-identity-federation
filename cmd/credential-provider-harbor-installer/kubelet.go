@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -378,7 +379,7 @@ func restartKubelet(opts options) error {
 		return nil
 	}
 
-	services, err := kubeletServices(opts)
+	services, err := kubeletServices(opts, systemdRunsUnit)
 	if err != nil {
 		return err
 	}
@@ -394,12 +395,12 @@ func restartKubelet(opts options) error {
 
 // kubeletServices lists the units that have to come back before the node runs
 // against the flags this install wrote.
-func kubeletServices(opts options) ([]string, error) {
+func kubeletServices(opts options, runsUnit unitPredicate) ([]string, error) {
 	switch opts.Profile {
 	case "k3s", "k3d":
 		return []string{detectK3sService(opts, opts.KubeletService)}, nil
 	case "rke2":
-		return detectRKE2Services(opts, opts.KubeletService)
+		return detectRKE2Services(opts, opts.KubeletService, runsUnit)
 	}
 	if opts.KubeletService == "" {
 		return []string{"kubelet"}, nil
@@ -408,10 +409,20 @@ func kubeletServices(opts options) ([]string, error) {
 }
 
 func systemctl(args ...string) error {
+	return runSystemctl(os.Stdout, os.Stderr, args...)
+}
+
+// systemctlQuiet drops systemctl's output: "not enabled" is an answer here,
+// and logging it would read as a failure.
+func systemctlQuiet(args ...string) error {
+	return runSystemctl(io.Discard, io.Discard, args...)
+}
+
+func runSystemctl(stdout, stderr io.Writer, args ...string) error {
 	cmdArgs := append([]string{"-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "systemctl"}, args...)
 	cmd := exec.Command("nsenter", cmdArgs...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err == nil {
 		return nil
 	} else if !errors.Is(err, exec.ErrNotFound) {
@@ -419,8 +430,8 @@ func systemctl(args ...string) error {
 	}
 
 	cmd = exec.Command("systemctl", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
 	}
@@ -440,41 +451,69 @@ func detectK3sService(opts options, fallback string) string {
 	return "k3s"
 }
 
-// detectRKE2Services lists the units that are actually installed. A node
-// normally runs either the server or the agent, and only that unit's file is
-// present. A node that has both runs two kubelets, and restarting one of them
-// would leave the other on the old flags, so both are returned and both are
-// restarted.
-func detectRKE2Services(opts options, fallback string) ([]string, error) {
-	if fallback != "" && fallback != "rke2-agent" {
+// unitPredicate answers whether this node uses a unit.
+type unitPredicate func(unit string) bool
+
+// systemdRunsUnit reports whether a unit is active now or enabled for the
+// next boot. Either way the node uses it.
+func systemdRunsUnit(unit string) bool {
+	for _, question := range []string{"is-active", "is-enabled"} {
+		if err := systemctlQuiet(question, "--quiet", unit); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// detectRKE2Services lists the rke2 units this node actually runs. install.sh
+// puts both unit files on every node, so only systemd knows the role.
+func detectRKE2Services(opts options, fallback string, runsUnit unitPredicate) ([]string, error) {
+	// The profile sets no default, so anything here was asked for by name.
+	if fallback != "" {
 		return []string{fallback}, nil
 	}
-	// Tarball installs land in /usr/local/lib/systemd/system, RPM installs in
-	// /usr/lib/systemd/system, and either may be overridden in /etc.
+
+	var installed, running []string
+	for _, service := range []string{"rke2-server", "rke2-agent"} {
+		if !rke2UnitInstalled(opts, service) {
+			continue
+		}
+		installed = append(installed, service)
+		if runsUnit(service + ".service") {
+			running = append(running, service)
+		}
+	}
+
+	if len(running) > 0 {
+		return running, nil
+	}
+
+	// The files are already written, so the error has to say what to do next
+	// rather than fail on a guessed unit.
+	if len(installed) == 0 {
+		return nil, errors.New("no rke2-server.service or rke2-agent.service on this node: " +
+			"profile=rke2 expects one of them. Set kubelet.serviceName (KUBELET_SERVICE) to the unit " +
+			"that runs kubelet here, or use the profile that matches this node")
+	}
+	return nil, fmt.Errorf("systemd reports neither %s running nor enabled on this node, "+
+		"although the unit files are installed. Restarting all of them would start the role this "+
+		"node does not run. Start the one this node uses, or set kubelet.serviceName "+
+		"(KUBELET_SERVICE) to it", strings.Join(installed, " or "))
+}
+
+// rke2UnitInstalled reports whether a unit file is on the node. Tarball
+// installs use /usr/local/lib, RPM /usr/lib, and /etc overrides both.
+func rke2UnitInstalled(opts options, service string) bool {
 	unitDirs := []string{
 		"/etc/systemd/system",
 		"/usr/local/lib/systemd/system",
 		"/usr/lib/systemd/system",
 		"/lib/systemd/system",
 	}
-	var services []string
-	for _, service := range []string{"rke2-server", "rke2-agent"} {
-		for _, dir := range unitDirs {
-			if fileExists(hostPath(opts, filepath.Join(dir, service+".service"))) {
-				services = append(services, service)
-				break
-			}
+	for _, dir := range unitDirs {
+		if fileExists(hostPath(opts, filepath.Join(dir, service+".service"))) {
+			return true
 		}
 	}
-	if len(services) == 0 {
-		// Guessing rke2-agent here would send the run into a systemctl
-		// failure that says the unit does not exist, which reads as a broken
-		// installer rather than as a node the profile does not fit. The files
-		// are already written at this point, so the message has to say what
-		// to do next.
-		return nil, errors.New("no rke2-server.service or rke2-agent.service on this node: " +
-			"profile=rke2 expects one of them. Set kubelet.serviceName (KUBELET_SERVICE) to the unit " +
-			"that runs kubelet here, or use the profile that matches this node")
-	}
-	return services, nil
+	return false
 }

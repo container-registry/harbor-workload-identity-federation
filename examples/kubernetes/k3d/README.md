@@ -4,7 +4,7 @@ k3d runs k3s in Docker. The chart's `k3d` profile is the same as [`k3s`](../k3s/
 
 ## Cluster
 
-[`../k3d-config.yaml`](../k3d-config.yaml) creates a cluster with the Harbor audience allowed on the API server, and with mount points for the provider files.
+[`../k3d-config.yaml`](../k3d-config.yaml) creates a cluster with mount points for the provider files.
 
 Drop the `volumes` block unless you have a reason to keep it, and let the chart install the binary. If you do keep it, build the binary first and point the mount at it, because Docker silently creates an empty directory for a bind-mount source that does not exist, and the provider then fails with nothing useful in the logs:
 
@@ -19,7 +19,7 @@ k3d cluster create --config examples/kubernetes/k3d-config.yaml
 k3d kubeconfig merge credential-provider-test --kubeconfig-switch-context
 ```
 
-The `api-audiences` argument in that config is the part that matters. Without your Harbor audience in that list, the API server refuses to issue the token and the provider never gets a chance to run.
+The cluster needs nothing else at creation time for the audience. What lets kubelet ask for a Harbor token is the node audience RBAC, which the chart creates.
 
 ## Install
 
