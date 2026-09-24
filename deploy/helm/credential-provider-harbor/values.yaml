@@ -115,7 +115,7 @@ podLabels: {}
 
 # -- DaemonSet update strategy. Installing restarts kubelet, so updates have to
 # roll one node at a time. values.schema.json pins this: Recreate, a larger
-# maxUnavailable, and any maxSurge are rejected at install time.
+# maxUnavailable, and a nonzero maxSurge are rejected at install time.
 updateStrategy:
   type: RollingUpdate
   rollingUpdate:

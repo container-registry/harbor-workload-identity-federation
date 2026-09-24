@@ -104,7 +104,7 @@ On `kind`, check that the live kubelet command line inside the node container ha
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | Only needed if the deployer image itself is private. |
 | `priorityClassName` | `system-node-critical` | Image pulls depend on this component, so it should schedule ahead of ordinary workloads. |
-| `updateStrategy` | `RollingUpdate`, `maxUnavailable: 1` | One node at a time, because installing restarts kubelet. The schema pins it there: `Recreate`, a larger `maxUnavailable` and any `maxSurge` are refused at install time. |
+| `updateStrategy` | `RollingUpdate`, `maxUnavailable: 1` | One node at a time, because installing restarts kubelet. The schema pins it there: `Recreate`, a larger `maxUnavailable` and a nonzero `maxSurge` are refused at install time. |
 | `readinessProbe.enabled` | `true` | Reports whether the node finished installing this revision. See [Readiness](#readiness). |
 | `terminationGracePeriodSeconds` | `10` | The installer has no cleanup to do. |
 | `securityContext` | `privileged: true` | The installer writes to the host filesystem and restarts kubelet. The schema pins `privileged: true` and refuses the three fields that contradict it (`allowPrivilegeEscalation: false`, `runAsNonRoot: true`, a `runAsUser` other than `0`), because each of those fails on the node rather than at install time. Fields a cluster policy needs and the installer does not care about still pass. |

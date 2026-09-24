@@ -224,7 +224,7 @@
     },
     "updateStrategy": {
       "type": "object",
-      "description": "Installing restarts kubelet, so an update has to roll one node at a time. Recreate, a larger maxUnavailable, or any maxSurge would take several kubelets down together.",
+      "description": "Installing restarts kubelet, so an update has to roll one node at a time. Recreate, a larger maxUnavailable, or a nonzero maxSurge would take several kubelets down together.",
       "properties": {
         "type": {
           "const": "RollingUpdate"
