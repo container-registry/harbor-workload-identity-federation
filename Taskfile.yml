@@ -288,6 +288,31 @@ tasks:
           --set nodeAudienceRbac.create=false
         echo "the install notes match every configuration above"
 
+  examples-check:
+    desc: Render every example values file against the chart
+    cmds:
+      - |
+        set -u
+        # go-task runs this through its own shell interpreter, not bash, so
+        # this stays POSIX: the file list lives in the positional parameters
+        # rather than an array, and nothing depends on nullglob. An unmatched
+        # glob stays literal, which is what the -f test catches.
+        set -- examples/kubernetes/*/*values.yaml
+        if [ ! -f "$1" ]; then
+          echo "ERROR: no example values files found under examples/kubernetes/"
+          exit 1
+        fi
+        status=0
+        for f in "$@"; do
+          if helm template {{.CHART}} {{.CHART_DIR}}/ -f "$f" >/dev/null; then
+            echo "ok: $f"
+          else
+            echo "ERROR: $f does not render against the chart"
+            status=1
+          fi
+        done
+        exit $status
+
   helm-schema-check:
     desc: Check that values.schema.json rejects the misconfigurations it is meant to catch
     cmds:
@@ -402,6 +427,7 @@ tasks:
       - task: helm-lint
       - task: helm-template
       - task: helm-schema-check
+      - task: examples-check
 
   spellcheck:
     desc: Run spell checker (mirrors CI)

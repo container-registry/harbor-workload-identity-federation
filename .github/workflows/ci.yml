@@ -58,6 +58,9 @@ jobs:
       - name: Check the chart values schema
         run: task helm-schema-check
 
+      - name: Render the example values files
+        run: task examples-check
+
   image:
     needs: [check]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

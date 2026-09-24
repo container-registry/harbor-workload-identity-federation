@@ -1,18 +1,55 @@
-# Kubernetes Examples
+# Kubernetes
 
-These examples show the resources kubelet needs to pull Harbor images with `credential-provider-harbor` and service account tokens.
+Install `credential-provider-harbor` on your nodes so pods pull Harbor images with service account tokens instead of `imagePullSecrets`.
+
+Pick your distribution. The pages differ because distributions disagree about where a kubelet's arguments come from, and that is the part that decides whether any of this works.
+
+## Distributions
+
+| Distribution | How it goes | Page |
+|--------------|-------------|------|
+| kubeadm and other systemd nodes | One `helm install` | [`kubeadm/`](kubeadm/) |
+| Amazon EKS | One `helm install`; the AMI already sets the kubelet flags | [`eks/`](eks/) |
+| k3s | One `helm install` | [`k3s/`](k3s/) |
+| k3d | One `helm install`, plus an API server audience at cluster creation | [`k3d/`](k3d/) |
+| kind | One `helm install`, sometimes plus an `ExecStart` override | [`kind/`](kind/) |
+| GKE Standard | One `helm install`, but nodes lose it on replacement | [`gke/`](gke/) |
+| RKE2 | Chart installs the files, you add two lines to the RKE2 config | [`rke2/`](rke2/) |
+| MicroK8s | Chart installs the files, you add two kubelet arguments | [`microk8s/`](microk8s/) |
+| AKS | Chart installs the files, you patch `KUBELET_FLAGS` per node | [`aks/`](aks/) |
+| Talos Linux | System extension, not the chart | [`../talos/`](../talos/) |
+| OpenShift | Not supported; the page explains what it would take | [`openshift/`](openshift/) |
+| GKE Autopilot | Not possible. No privileged host access, no kubelet control | — |
+
+## The Three Things That Have To Line Up
+
+Most failures are one of these, and they are easier to check than to debug.
+
+**1. kubelet has the flags.** Installing the binary and the config is not enough. kubelet has to be running with `--image-credential-provider-bin-dir` and `--image-credential-provider-config`. If it is not, pulls fail with `no basic auth credentials` and the provider is never called at all.
+
+```bash
+./scripts/verify-node-install.sh
+```
+
+**2. The API server will issue the audience.** The audience your provider asks for has to be in the API server's `--api-audiences`, and the node audience RBAC has to grant `request-serviceaccounts-token-audience` on it to `system:nodes`. The chart creates that RBAC; [`rbac-audience.yaml`](rbac-audience.yaml) is the standalone version.
+
+**3. Harbor expects the same audience string.** The audience is just an agreed identifier. It does not have to be a domain. What matters is that the same value appears in the kubelet config, the RBAC, and the Harbor Federated IDP. Using the registry hostname makes it obvious who the token is for, which is why the examples do that.
 
 ## Harbor Setup
 
-Create a Harbor Federated IDP for your Kubernetes service account issuer. For a cluster issuer of `https://kind.128.140.12.238.nip.io`, use:
+Find the cluster's service account issuer:
 
-```text
-OpenID configuration URL: https://kind.128.140.12.238.nip.io/.well-known/openid-configuration
-Issuer: https://kind.128.140.12.238.nip.io
-Audience: <your-harbor-audience>
+```bash
+kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
 ```
 
-Create a federated robot account with pull permission and claim rules such as:
+Create a Harbor Federated IDP for that issuer. If the issuer is publicly reachable, as on EKS and GKE, Harbor can validate online. If it is not, as on a local or private cluster, fetch the keys and configure the IDP with inline JWKS:
+
+```bash
+kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)"
+```
+
+Then create a federated robot account with pull permission and claim rules:
 
 ```text
 iss == <cluster-service-account-issuer>
@@ -20,70 +57,19 @@ aud == <your-harbor-audience>
 sub == system:serviceaccount:<namespace>:<service-account>
 ```
 
-For the default service account in the default namespace:
+For the default service account in the default namespace, `sub` is `system:serviceaccount:default:default`.
 
-```text
-sub == system:serviceaccount:default:default
-```
+The Harbor side is documented in full at https://container-registry.com/docs/.
 
-## kind
-
-For local kind clusters, make sure the kubelet process is actually started with the credential provider flags. Installing the binary and `CredentialProviderConfig` file is not enough.
-
-Use the Helm chart with the kind profile:
-
-```bash
-helm upgrade --install credential-provider-harbor deploy/helm/credential-provider-harbor \
-  --namespace kube-system \
-  --create-namespace \
-  --set profile=kind \
-  --set registry.host=harbor.example.com \
-  --set registry.audience=https://harbor.example.com
-```
-
-Verify the live kubelet command line inside the kind node includes both flags:
-
-```bash
-docker exec <kind-node> sh -c 'tr "\0" " " < /proc/$(pidof kubelet)/cmdline; printf "\n"'
-```
-
-Expected flags:
-
-```text
---image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider
---image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml
-```
-
-If those flags are missing after install and restart, enable the kind-only forced `ExecStart` override:
-
-```bash
-helm upgrade --install credential-provider-harbor deploy/helm/credential-provider-harbor \
-  --namespace kube-system \
-  --create-namespace \
-  --set profile=kind \
-  --set registry.host=harbor.example.com \
-  --set registry.audience=https://harbor.example.com \
-  --set kubelet.forceExecStartOverride=true
-```
-
-This writes a drop-in equivalent to [`kind-kubelet-systemd-dropin.conf`](kind-kubelet-systemd-dropin.conf). It resets kubelet `ExecStart` and appends the credential-provider flags directly. Use it only when kind does not propagate `KUBELET_EXTRA_ARGS` into the live kubelet process.
-
-Then apply the audience RBAC and deploy a pod without `imagePullSecrets`:
-
-```bash
-kubectl apply -f examples/kubernetes/rbac-audience.yaml
-kubectl apply -f examples/kubernetes/pod-example.yaml
-```
-
-If the pod fails with `no basic auth credentials`, check the live kubelet command line first. That error usually means kubelet did not invoke the credential provider.
-
-## Files
+## Shared Files
 
 | File | Purpose |
 |------|---------|
-| [`k8s_credential_provider_config.yaml`](k8s_credential_provider_config.yaml) | Kubelet `CredentialProviderConfig` example. |
-| [`rbac-audience.yaml`](rbac-audience.yaml) | RBAC for kubelets to request service account tokens with the Harbor audience. |
-| [`pod-example.yaml`](pod-example.yaml) | Test pod that pulls from Harbor without `imagePullSecrets`. |
-| [`k3d-config.yaml`](k3d-config.yaml) | k3d cluster config example for mounting provider files. |
-| [`k3s-config.yaml`](k3s-config.yaml) | k3s config drop-in for credential-provider paths. |
-| [`kind-kubelet-systemd-dropin.conf`](kind-kubelet-systemd-dropin.conf) | Optional kind fallback when `KUBELET_EXTRA_ARGS` is not propagated. |
+| [`k8s_credential_provider_config.yaml`](k8s_credential_provider_config.yaml) | A kubelet `CredentialProviderConfig`, for when you install by hand instead of with the chart |
+| [`rbac-audience.yaml`](rbac-audience.yaml) | The node audience RBAC, standalone |
+| [`pod-example.yaml`](pod-example.yaml) | A pod that pulls from Harbor with no `imagePullSecrets` |
+| [`k3d-config.yaml`](k3d-config.yaml) | k3d cluster config with the audience allowed |
+| [`k3s-config.yaml`](k3s-config.yaml) | The k3s config drop-in the installer writes |
+| [`kind-kubelet-systemd-dropin.conf`](kind-kubelet-systemd-dropin.conf) | The kind `ExecStart` override, for reference |
+
+The first four use `harbor.example.com` as the registry host and the audience; replace it with yours. The last two are kubelet wiring only and contain no registry reference. `pod-example.yaml` also needs an image that exists in your Harbor, or the pod sits in `ImagePullBackOff` and looks like a credential provider failure.

@@ -1,0 +1,25 @@
+# GKE Standard, Ubuntu node images ONLY.
+#
+# Container-Optimized OS mounts /usr noexec, so the binary cannot live in
+# /usr/local/bin there. The nodeSelector below keeps this release on Ubuntu
+# nodes, so installing it as-is in a mixed-pool cluster cannot break pulls on
+# the COS nodes. Use cos-values.yaml for those. See README.md.
+#
+# The label value is the node image type. Since GKE 1.24 dropped the Docker
+# runtime, Ubuntu pools are ubuntu_containerd; the plain ubuntu value only ever
+# matched the Docker image and now matches nothing, which makes the DaemonSet
+# skip every node and the install do nothing at all. Confirm with:
+#   kubectl get nodes -L cloud.google.com/gke-os-distribution
+
+profile: generic
+
+nodeSelector:
+  cloud.google.com/gke-os-distribution: ubuntu_containerd
+
+registry:
+  host: harbor.example.com
+  audience: harbor.example.com
+
+kubelet:
+  configure: true
+  restart: true
