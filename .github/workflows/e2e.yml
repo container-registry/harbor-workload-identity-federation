@@ -1,0 +1,94 @@
+name: E2E
+
+on:
+  pull_request:
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "deploy/helm/**"
+      - "scripts/**"
+      - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/e2e.yml"
+  push:
+    branches: [main]
+  schedule:
+    # Monday morning. The latest channel pins nothing, so this is what catches
+    # an upstream release that breaks the install.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      distros: ${{ steps.pick.outputs.distros }}
+    steps:
+      - id: pick
+        # A pull request runs the two container-based distros, which take a few
+        # minutes. The four that install a distribution onto the runner take
+        # far longer, so they run on main, on the schedule, and on request.
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            echo 'distros=["kind","k3d"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'distros=["kind","k3d","k3s","rke2","microk8s","kubeadm"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: ${{ fromJSON(needs.select.outputs.distros) }}
+        channel: [pinned, latest]
+    name: ${{ matrix.distro }} (${{ matrix.channel }})
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+      - name: Install kubectl
+        # Matched to the channel. kubectl supports one minor either side of the
+        # server, and the pinned channel is several behind today's stable.
+        run: |
+          if [ "${{ matrix.channel }}" = pinned ]; then
+            . scripts/e2e/versions.env
+            release="stable-${E2E_PINNED_K8S_MINOR#v}.txt"
+          else
+            release="stable.txt"
+          fi
+          version="$(curl -sfL "https://dl.k8s.io/release/${release}")"
+          curl -sfLo /tmp/kubectl "https://dl.k8s.io/release/${version}/bin/linux/amd64/kubectl"
+          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
+      - name: Install kind
+        if: matrix.distro == 'kind'
+        run: |
+          curl -sfLo /tmp/kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          sudo install -m 0755 /tmp/kind /usr/local/bin/kind
+
+      - name: Install k3d
+        if: matrix.distro == 'k3d'
+        # The release binary, not the install script off main: that script is
+        # mutable and this job runs it with sudo.
+        run: |
+          curl -sfLo /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-amd64
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+
+      - name: Run
+        run: scripts/e2e/run.sh ${{ matrix.distro }} ${{ matrix.channel }}
