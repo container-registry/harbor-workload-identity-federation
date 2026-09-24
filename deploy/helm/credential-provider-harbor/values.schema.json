@@ -8,12 +8,12 @@
       "pattern": "^(/[^/\\s\"'\\\\$%]+(/[^/\\s\"'\\\\$%]+)*)?$"
     },
     "filePath": {
-      "description": "Absolute host path naming a file, not a directory: / and any trailing slash are rejected.",
+      "description": "Absolute host path that names something inside a parent directory: / and any trailing slash are rejected. Used by both the files the installer writes and the directory it mounts the host filesystem at, so it says nothing about which of the two a value is; the property's own description does.",
       "type": "string",
       "pattern": "^/([^/]+/)*[^/]+$"
     },
     "optionalFilePath": {
-      "description": "Absolute host path naming a file, or empty for the profile default. / and a trailing slash are rejected.",
+      "description": "Absolute host path that names something inside a parent directory, or empty for the profile default. / and a trailing slash are rejected.",
       "type": "string",
       "pattern": "^(/([^/]+/)*[^/]+)?$"
     }
