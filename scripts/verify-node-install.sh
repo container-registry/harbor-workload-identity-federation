@@ -30,44 +30,76 @@ red() { printf '\033[31m%s\033[0m\n' "$1"; }
 green() { printf '\033[32m%s\033[0m\n' "$1"; }
 yellow() { printf '\033[33m%s\033[0m\n' "$1"; }
 
-# kubectl debug names its pod node-debugger-<node>-<suffix> and leaves it
-# behind when it exits, so a few runs across a few nodes litter the namespace
-# with completed privileged pods. Clean up ours after each call.
+# The debug pods sitting on a node, oldest first. kubectl debug names its pod
+# node-debugger-<node>-<suffix> and leaves it behind when it exits, so these
+# accumulate across calls.
+#
+# -F, not a pattern: a node name like "worker.example.com" read as a regex
+# would let its dots match any character and pick up another node's debug
+# pods. A pod name cannot contain "/", so the fixed string "pod/node-..." can
+# only ever match at the start of a line from `kubectl get -o name`.
+debug_pods_for() {
+  local node=$1
+  kubectl get pods -n "${NAMESPACE}" -o name \
+    --sort-by=.metadata.creationTimestamp 2>/dev/null \
+    | grep -F -e "pod/node-debugger-${node}-" || true
+}
+
+# A few runs across a few nodes would otherwise litter the namespace with
+# completed privileged pods. Clean up ours after each call.
 cleanup_debug_pods() {
   local node=$1 pods
-  # -F, not a pattern: a node name like "worker.example.com" read as a regex
-  # would let its dots match any character and delete another node's debug
-  # pods. A pod name cannot contain "/", so the fixed string "pod/node-..."
-  # can only ever match at the start of a line from `kubectl get -o name`.
-  pods=$(kubectl get pods -n "${NAMESPACE}" -o name 2>/dev/null \
-    | grep -F -e "pod/node-debugger-${node}-" || true)
+  pods=$(debug_pods_for "${node}")
   [ -n "${pods}" ] || return 0
   # shellcheck disable=SC2086  # deliberate word splitting over the pod list
   kubectl delete -n "${NAMESPACE}" ${pods} --wait=false >/dev/null 2>&1 || true
+}
+
+# The log of the debug pod this attempt created, once it has finished. The
+# pods that were already there are excluded by name: cleanup does not wait for
+# a delete, so an earlier attempt's pod can still be listed, and reading it
+# would answer this attempt with a previous one's view of the node.
+debug_pod_log() {
+  local node=$1 already=$2 pod
+  pod=$(debug_pods_for "${node}" \
+    | grep -F -x -v -f <(printf '%s\n' "${already}") | tail -1) || true
+  [ -n "${pod}" ] || return 0
+  kubectl wait --for=jsonpath='{.status.phase}'=Succeeded "${pod}" \
+    -n "${NAMESPACE}" --timeout=60s >/dev/null 2>&1 || true
+  kubectl logs -n "${NAMESPACE}" "${pod}" 2>/dev/null || true
 }
 
 # Runs a shell snippet on a node through a debug pod, chrooted into the host.
 #
 # Every snippet below prints something on every path, so empty output means the
 # attach never saw the container rather than that the node answered "nothing".
-# A node that has just restarted its kubelet does that reliably, because the
-# debug pod cannot start until kubelet is back, and an install is exactly when
-# you run this. Without the retry a healthy node reads as having no kubelet.
+# Two things cause that. The attach races the container, which for a program
+# that prints and exits it can lose outright, so the pod's log is asked for
+# whatever the attach came back with. And a node that has just restarted its
+# kubelet cannot start the pod at all, which is exactly when this gets run, so
+# the whole thing is retried. Without either, a healthy node reads as having no
+# kubelet.
 on_node() {
-  local node=$1 script=$2 rc out attempt
+  local node=$1 script=$2 rc out attempt already
   shift 2
   for attempt in 1 2 3; do
     rc=0
+    already=$(debug_pods_for "${node}")
     out=$(kubectl debug "node/${node}" \
       --image="${DEBUG_IMAGE}" \
       --profile=sysadmin \
       --namespace="${NAMESPACE}" \
       -q --attach=true \
       -- chroot /host /bin/sh -c "${script}" verify-node-install "$@" 2>/dev/null) || rc=$?
+    if [ -z "${out}" ]; then
+      out=$(debug_pod_log "${node}" "${already}")
+      # The node answered after all, so the attach's exit status was about the
+      # attach and not about the node.
+      [ -z "${out}" ] || rc=0
+    fi
     cleanup_debug_pods "${node}"
     # Empty is the only retryable answer, and it is retryable whatever the
-    # exit status: a kubelet that is still restarting fails the attach both
-    # ways. Anything that produced output has answered.
+    # exit status: a kubelet that is still restarting fails both routes.
     [ -z "${out}" ] || break
     [ "${attempt}" -eq 3 ] || sleep 5
   done
