@@ -4,7 +4,7 @@
 # kubelite under snap confinement, so this covers the snap arguments file and
 # the writable paths the microk8s profile has to use.
 #
-# Usage: microk8s.sh up|down|load|profile|install-args|restart-nodes
+# Usage: microk8s.sh up|down|load|profile|install-args|restart-nodes|dump-node
 
 set -euo pipefail
 
@@ -48,4 +48,4 @@ down() {
   sudo snap remove microk8s --purge || true
 }
 
-"${1:?up, down, load, profile, install-args or restart-nodes}"
+"${1:?up, down, load, profile, install-args, restart-nodes or dump-node}"

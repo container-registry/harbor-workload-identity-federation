@@ -3,7 +3,7 @@
 # k3d cluster for the e2e install test: k3s in a container, so the installer
 # writes to /etc/rancher/k3s/config.yaml.d inside the node container.
 #
-# Usage: k3d.sh up|down|load|profile|install-args|restart-nodes
+# Usage: k3d.sh up|down|load|profile|install-args|restart-nodes|dump-node
 
 set -euo pipefail
 
@@ -46,4 +46,4 @@ down() {
   k3d cluster delete "${E2E_CLUSTER_NAME}" || true
 }
 
-"${1:?up, down, load, profile, install-args or restart-nodes}"
+"${1:?up, down, load, profile, install-args, restart-nodes or dump-node}"
