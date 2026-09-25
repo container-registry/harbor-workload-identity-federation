@@ -4,7 +4,7 @@
 # that runs kubelet as its own systemd unit on a normal filesystem, which is
 # what the generic profile is written for.
 #
-# Usage: kubeadm.sh up|down|load|profile|install-args|restart-nodes
+# Usage: kubeadm.sh up|down|load|profile|install-args|restart-nodes|dump-node
 
 set -euo pipefail
 
@@ -15,6 +15,9 @@ source "${E2E_ROOT}/versions.env"
 
 FLANNEL_MANIFEST="https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml"
 POD_CIDR="10.244.0.0/16"
+
+# Set by up() once the package version is known, and used for kubeadm init.
+K8S_VERSION=""
 
 profile() { echo generic; }
 
@@ -66,7 +69,30 @@ up() {
   echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${minor}/deb/ /" \
     | sudo tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
   sudo apt-get update -qq
-  sudo apt-get install -y -qq kubelet kubeadm kubectl
+
+  # One exact version, taken from the repository that was just added. Asking
+  # apt for "kubelet kubeadm kubectl" gets the highest version any configured
+  # source offers, and this machine offers its own: the pinned channel logged
+  # v1.34 and stood up a v1.37 node.
+  local pkg
+  pkg="$(apt-cache madison kubeadm | awk -v repo="stable:/${minor}/deb" '$0 ~ repo {print $3; exit}')"
+  [ -n "${pkg}" ] || fail "no kubeadm package for ${minor} in the repository just added"
+
+  log "installing kubelet, kubeadm and kubectl ${pkg}"
+  # --allow-downgrades because the pinned channel is a downgrade here: the
+  # machine ships a newer kubectl than the minor under test, which is the same
+  # thing that let apt pick its own version before.
+  sudo apt-get install -y -qq --allow-downgrades \
+    "kubelet=${pkg}" "kubeadm=${pkg}" "kubectl=${pkg}"
+  # Nothing here upgrades them, but an unattended upgrade mid-run would swap
+  # the kubelet under the node the test is about to inspect.
+  sudo apt-mark hold kubelet kubeadm kubectl >/dev/null
+
+  K8S_VERSION="v${pkg%%-*}"
+  local got
+  got="$(kubeadm version -o short)"
+  [ "${got}" = "${K8S_VERSION}" ] \
+    || fail "asked for kubeadm ${K8S_VERSION} and got ${got}"
 
   # kubelet and containerd have to agree on the cgroup driver, and the shipped
   # containerd config says cgroupfs while kubeadm defaults to systemd.
@@ -85,7 +111,9 @@ up() {
 
   install_cni_plugins
 
-  sudo kubeadm init --pod-network-cidr "${POD_CIDR}"
+  # Named rather than left to kubeadm's default, so the control plane matches
+  # the kubelet that was installed instead of whatever is newest.
+  sudo kubeadm init --kubernetes-version "${K8S_VERSION}" --pod-network-cidr "${POD_CIDR}"
   sudo cp /etc/kubernetes/admin.conf "${KUBECONFIG}"
   sudo chown "$(id -u):$(id -g)" "${KUBECONFIG}"
   chmod 600 "${KUBECONFIG}"
@@ -95,6 +123,28 @@ up() {
   kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
   kubectl apply -f "${FLANNEL_MANIFEST}"
   wait_for_nodes 10m
+}
+
+# The node is this machine, so the files the installer wrote and the command
+# line kubelet actually ended up with can be read directly. Printed on failure
+# because "kubelet is running WITHOUT the credential provider flags" says
+# nothing about which of those two went wrong.
+dump-node() {
+  log "kubelet drop-in"
+  sudo cat /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf 2>&1 || true
+  log "kubelet unit as systemd merged it"
+  sudo systemctl cat kubelet 2>&1 || true
+  log "kubelet command line"
+  local pid
+  pid="$(pgrep -x kubelet | head -1)" || true
+  if [ -n "${pid}" ]; then
+    sudo cat "/proc/${pid}/cmdline" | tr '\0' ' '
+    echo
+  else
+    echo "no kubelet process"
+  fi
+  log "kubelet environment files"
+  sudo cat /etc/default/kubelet /var/lib/kubelet/kubeadm-flags.env 2>&1 || true
 }
 
 load() {
@@ -108,4 +158,4 @@ down() {
   sudo rm -rf /etc/cni/net.d
 }
 
-"${1:?up, down, load, profile, install-args or restart-nodes}"
+"${1:?up, down, load, profile, install-args, restart-nodes or dump-node}"

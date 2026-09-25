@@ -107,8 +107,10 @@ dump_state() {
     -l app.kubernetes.io/name=credential-provider-harbor --tail=200 --prefix || true
 }
 
-# Two things a cluster script may override. install-args prints extra helm
+# Three things a cluster script may override. install-args prints extra helm
 # --set flags the distro needs; restart-nodes brings the node back when the
-# installer could not do it itself.
+# installer could not do it itself; dump-node prints what only the node itself
+# can answer, for a failed run.
 install-args() { :; }
 restart-nodes() { :; }
+dump-node() { :; }

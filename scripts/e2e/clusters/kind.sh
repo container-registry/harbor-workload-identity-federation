@@ -3,7 +3,7 @@
 # kind cluster for the e2e install test: nodes are containers running systemd,
 # so the kind profile's systemd drop-in is what gets exercised.
 #
-# Usage: kind.sh up|down|load|profile|install-args|restart-nodes
+# Usage: kind.sh up|down|load|profile|install-args|restart-nodes|dump-node
 
 set -euo pipefail
 
@@ -38,4 +38,4 @@ down() {
   kind delete cluster --name "${E2E_CLUSTER_NAME}" || true
 }
 
-"${1:?up, down, load, profile, install-args or restart-nodes}"
+"${1:?up, down, load, profile, install-args, restart-nodes or dump-node}"

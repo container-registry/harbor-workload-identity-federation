@@ -4,7 +4,7 @@
 # supervisor, so this is the only way to exercise detectRKE2Services and the
 # config.yaml.d drop-in against a real one.
 #
-# Usage: rke2.sh up|down|load|profile|install-args|restart-nodes
+# Usage: rke2.sh up|down|load|profile|install-args|restart-nodes|dump-node
 
 set -euo pipefail
 
@@ -50,4 +50,4 @@ down() {
   sudo /usr/local/bin/rke2-uninstall.sh || true
 }
 
-"${1:?up, down, load, profile, install-args or restart-nodes}"
+"${1:?up, down, load, profile, install-args, restart-nodes or dump-node}"

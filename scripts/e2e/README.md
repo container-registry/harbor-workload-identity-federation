@@ -87,11 +87,12 @@ Write `clusters/<name>.sh` answering four words: `up`, `load`, `down` and
 `$E2E_IMAGE` where that cluster's kubelet can find it, `profile` prints the
 chart profile to install with.
 
-Two more are optional, and default to doing nothing in
+Three more are optional, and default to doing nothing in
 [`lib/common.sh`](lib/common.sh). `install-args` prints extra `--set` flags the
-distro needs, and `restart-nodes` runs between the install and the
-verification for a distro whose kubelet the installer cannot restart from
-inside the cluster. kind uses the first, k3d uses both.
+distro needs, `restart-nodes` runs between the install and the verification for
+a distro whose kubelet the installer cannot restart from inside the cluster,
+and `dump-node` prints what only the node can answer when a run has failed.
+kind uses the first, k3d the first two, kubeadm the last.
 
 Everything after that is
 [`install-test.sh`](install-test.sh), which is distro-agnostic on purpose. Then
