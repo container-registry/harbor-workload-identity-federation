@@ -79,7 +79,11 @@ up() {
   [ -n "${pkg}" ] || fail "no kubeadm package for ${minor} in the repository just added"
 
   log "installing kubelet, kubeadm and kubectl ${pkg}"
-  sudo apt-get install -y -qq "kubelet=${pkg}" "kubeadm=${pkg}" "kubectl=${pkg}"
+  # --allow-downgrades because the pinned channel is a downgrade here: the
+  # runner ships a newer kubectl than the minor under test, which is the same
+  # thing that let apt pick its own version before.
+  sudo apt-get install -y -qq --allow-downgrades \
+    "kubelet=${pkg}" "kubeadm=${pkg}" "kubectl=${pkg}"
   # Nothing here upgrades them, but an unattended upgrade mid-run would swap
   # the kubelet under the node the test is about to inspect.
   sudo apt-mark hold kubelet kubeadm kubectl >/dev/null

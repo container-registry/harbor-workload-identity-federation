@@ -13,6 +13,11 @@ import (
 const (
 	binDirFlag = "--image-credential-provider-bin-dir"
 	configFlag = "--image-credential-provider-config"
+
+	// The variable an AKS kubelet unit expands, and the one every other
+	// systemd kubelet unit expands.
+	kubeletFlagsVar     = "KUBELET_FLAGS"
+	kubeletExtraArgsVar = "KUBELET_EXTRA_ARGS"
 )
 
 // configureKubelet points the node's kubelet at the installed binary and
@@ -92,14 +97,68 @@ func systemdDropInPath(opts options) string {
 }
 
 func configureSystemdKubelet(opts options) (bool, error) {
-	return writeHostFile(opts, hostFile{
+	dropIn, err := writeHostFile(opts, hostFile{
 		path: systemdDropInPath(opts),
 		content: fmt.Sprintf(`[Service]
-Environment="KUBELET_EXTRA_ARGS=%s=%s %s=%s"
-`, binDirFlag, opts.BinDir, configFlag, opts.ConfigPath),
+Environment="%s=%s=%s %s=%s"
+`, kubeletExtraArgsVar, binDirFlag, opts.BinDir, configFlag, opts.ConfigPath),
 		label: "kubelet systemd drop-in",
 		title: "Kubelet systemd drop-in",
 	})
+	if err != nil {
+		return false, err
+	}
+
+	envFile, err := syncKubeletEnvironmentFile(opts)
+	if err != nil {
+		return false, err
+	}
+	return dropIn || envFile, nil
+}
+
+// syncKubeletEnvironmentFile writes the same two flags into the environment
+// file the kubelet unit reads, when that file already assigns the variable the
+// drop-in sets.
+//
+// systemd resolves EnvironmentFile= after Environment=, whatever order the
+// drop-ins are merged in, so a file that assigns KUBELET_EXTRA_ARGS wins over
+// the drop-in even when the drop-in sorts last. The kubeadm packages ship
+// /etc/default/kubelet with an empty assignment, which is enough to erase the
+// flags: the drop-in lands, systemd merges it, and the kubelet still starts
+// without them.
+//
+// Nothing here is an error. A node whose unit reads no such file, or whose
+// file leaves the variable alone, is a node where the drop-in is what works.
+func syncKubeletEnvironmentFile(opts options) (bool, error) {
+	path := opts.KubeletDefaultsPath
+	if path == "" {
+		path = "/etc/default/kubelet"
+	}
+	hostDefaultsPath := hostPath(opts, path)
+
+	existing, err := os.ReadFile(hostDefaultsPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", hostDefaultsPath, err)
+	}
+
+	updated, err := setKubeletFlags(string(existing), kubeletExtraArgsVar, opts.BinDir, opts.ConfigPath)
+	if err != nil {
+		return false, nil
+	}
+
+	changed, err := writeFileIfChanged(hostDefaultsPath, []byte(updated), 0644, true)
+	if err != nil {
+		return false, fmt.Errorf("write %s: %w", hostDefaultsPath, err)
+	}
+	if changed {
+		fmt.Printf("[INFO] Patched %s in %s, which overrides the drop-in\n", kubeletExtraArgsVar, hostDefaultsPath)
+	} else {
+		fmt.Printf("[INFO] %s already up to date: %s\n", kubeletExtraArgsVar, hostDefaultsPath)
+	}
+	return changed, nil
 }
 
 func configureKindSystemdKubelet(opts options) (bool, error) {
@@ -169,7 +228,7 @@ func configureKubeletDefaults(opts options) (bool, error) {
 		return false, fmt.Errorf("read kubelet defaults: %w", err)
 	}
 
-	updated, err := setKubeletFlags(string(existing), opts.BinDir, opts.ConfigPath)
+	updated, err := setKubeletFlags(string(existing), kubeletFlagsVar, opts.BinDir, opts.ConfigPath)
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", hostDefaultsPath, err)
 	}
@@ -195,16 +254,16 @@ func configureKubeletDefaults(opts options) (bool, error) {
 // A commented-out assignment is not an assignment. Where there is more than
 // one active assignment the last one is patched, because that is the one
 // systemd's EnvironmentFile parser leaves in the environment.
-func setKubeletFlags(content, binDir, configPath string) (string, error) {
+func setKubeletFlags(content, key, binDir, configPath string) (string, error) {
 	lines := strings.Split(content, "\n")
 	target := -1
 	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimLeft(line, " \t"), "KUBELET_FLAGS=") {
+		if strings.HasPrefix(strings.TrimLeft(line, " \t"), key+"=") {
 			target = i
 		}
 	}
 	if target < 0 {
-		return "", errors.New("no active KUBELET_FLAGS assignment")
+		return "", fmt.Errorf("no active %s assignment", key)
 	}
 
 	line := strings.TrimRight(lines[target], " \t\r")
