@@ -151,6 +151,11 @@ tasks:
         fi
         echo "chart appVersion $app_version matches the released binary version"
 
+  chart-images-check:
+    desc: Check the chart's images annotation names the image its defaults install
+    cmds:
+      - ./scripts/sync-chart-images.sh --check
+
   helm-lint:
     desc: Lint the Helm chart
     cmds:
@@ -435,6 +440,7 @@ tasks:
       - task: test
       - task: build-all
       - task: version-check
+      - task: chart-images-check
       - task: helm-lint
       - task: helm-template
       - task: helm-schema-check
