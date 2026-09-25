@@ -24,7 +24,7 @@ restart-nodes() {
   log "restarting the cluster so k3s rereads its config"
   k3d cluster stop "${E2E_CLUSTER_NAME}"
   k3d cluster start "${E2E_CLUSTER_NAME}" --wait
-  kubectl wait --for=condition=Ready nodes --all --timeout=5m
+  wait_for_nodes 5m
 }
 
 up() {
@@ -34,7 +34,7 @@ up() {
   log "creating k3d cluster ${E2E_CLUSTER_NAME} (${E2E_K8S_CHANNEL})"
   k3d cluster create "${E2E_CLUSTER_NAME}" "${args[@]}"
   kubectl config use-context "k3d-${E2E_CLUSTER_NAME}"
-  kubectl wait --for=condition=Ready nodes --all --timeout=5m
+  wait_for_nodes 5m
 }
 
 load() {

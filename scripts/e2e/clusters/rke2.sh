@@ -34,7 +34,7 @@ up() {
   retry 60 10 test -r /etc/rancher/rke2/rke2.yaml
   cp /etc/rancher/rke2/rke2.yaml "${KUBECONFIG}"
   chmod 600 "${KUBECONFIG}"
-  kubectl wait --for=condition=Ready nodes --all --timeout=10m
+  wait_for_nodes 10m
 }
 
 load() {
