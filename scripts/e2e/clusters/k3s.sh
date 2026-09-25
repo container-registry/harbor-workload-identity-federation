@@ -4,7 +4,7 @@
 # installer writes /etc/rancher/k3s/config.yaml.d and restarts k3s.service
 # rather than dropping a systemd unit file in.
 #
-# Usage: k3s.sh up|down|load|profile|install-args|restart-nodes
+# Usage: k3s.sh up|down|load|profile|install-args|restart-nodes|dump-node
 
 set -euo pipefail
 
@@ -43,4 +43,4 @@ down() {
   sudo /usr/local/bin/k3s-uninstall.sh || true
 }
 
-"${1:?up, down, load, profile, install-args or restart-nodes}"
+"${1:?up, down, load, profile, install-args, restart-nodes or dump-node}"

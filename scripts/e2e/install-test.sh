@@ -20,7 +20,10 @@ CHART_DIR="${REPO_ROOT}/deploy/helm/credential-provider-harbor"
 
 cleanup() {
   local rc=$?
-  [ "${rc}" -eq 0 ] || dump_state
+  if [ "${rc}" -ne 0 ]; then
+    dump_state
+    [ -z "${E2E_CLUSTER_SCRIPT:-}" ] || "${E2E_CLUSTER_SCRIPT}" dump-node || true
+  fi
   if [ -n "${E2E_KEEP:-}" ]; then
     log "E2E_KEEP set, leaving the release installed"
     return "${rc}"
