@@ -28,6 +28,23 @@ k8s_minor() {
   curl -sfL https://dl.k8s.io/release/stable.txt | cut -d. -f1,2
 }
 
+# Flannel installs its own plugin and nothing else, and its conflist delegates
+# to bridge and host-local and then chains portmap. Without those three, every
+# pod off the host network stops at sandbox creation.
+install_cni_plugins() {
+  local url tgz
+  url="https://github.com/containernetworking/plugins/releases/download/${E2E_CNI_PLUGINS_VERSION}/cni-plugins-linux-amd64-${E2E_CNI_PLUGINS_VERSION}.tgz"
+  tgz="$(mktemp)"
+
+  log "installing CNI plugins ${E2E_CNI_PLUGINS_VERSION}"
+  curl -sfL "${url}" -o "${tgz}"
+  curl -sfL "${url}.sha256" | sed "s|cni-plugins-linux-amd64-${E2E_CNI_PLUGINS_VERSION}.tgz|${tgz}|" \
+    | sha256sum -c -
+  sudo mkdir -p /opt/cni/bin
+  sudo tar -C /opt/cni/bin -xzf "${tgz}"
+  rm -f "${tgz}"
+}
+
 up() {
   need curl sudo
   host_install_guard kubeadm
@@ -66,6 +83,8 @@ up() {
     | sudo tee /etc/sysctl.d/99-cph-e2e.conf >/dev/null
   sudo sysctl --system >/dev/null
 
+  install_cni_plugins
+
   sudo kubeadm init --pod-network-cidr "${POD_CIDR}"
   sudo cp /etc/kubernetes/admin.conf "${KUBECONFIG}"
   sudo chown "$(id -u):$(id -g)" "${KUBECONFIG}"
@@ -75,7 +94,7 @@ up() {
   # against.
   kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
   kubectl apply -f "${FLANNEL_MANIFEST}"
-  kubectl wait --for=condition=Ready nodes --all --timeout=10m
+  wait_for_nodes 10m
 }
 
 load() {

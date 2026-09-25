@@ -30,7 +30,7 @@ up() {
   retry 30 5 test -r /etc/rancher/k3s/k3s.yaml
   cp /etc/rancher/k3s/k3s.yaml "${KUBECONFIG}"
   chmod 600 "${KUBECONFIG}"
-  kubectl wait --for=condition=Ready nodes --all --timeout=5m
+  wait_for_nodes 5m
 }
 
 load() {

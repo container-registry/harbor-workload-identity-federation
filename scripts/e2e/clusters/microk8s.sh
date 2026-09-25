@@ -30,7 +30,7 @@ up() {
   # kubeconfig has to end up owned by whoever runs the test, not by root.
   sudo microk8s config > "${KUBECONFIG}"
   chmod 600 "${KUBECONFIG}"
-  kubectl wait --for=condition=Ready nodes --all --timeout=5m
+  wait_for_nodes 5m
 }
 
 load() {

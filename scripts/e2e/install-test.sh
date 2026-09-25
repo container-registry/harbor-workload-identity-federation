@@ -58,7 +58,7 @@ fi
 # A kubelet restart takes the node NotReady for a few seconds, and everything
 # below needs a pod on it.
 log "waiting for the nodes"
-kubectl wait --for=condition=Ready nodes --all --timeout=5m
+wait_for_nodes 5m
 
 log "installer logs"
 kubectl logs -n "${E2E_NAMESPACE}" -l "app.kubernetes.io/name=credential-provider-harbor" --tail=40 --prefix || true

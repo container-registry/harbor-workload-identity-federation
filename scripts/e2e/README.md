@@ -63,7 +63,10 @@ not a property of the test.
 EKS, GKE, AKS, OpenShift and Talos are not here. They need an account or a node
 reboot, so they are tested by hand against a release; each one's README has the
 steps. `kubeadm` covers the `generic` profile that a self-managed cluster uses,
-which is the closest automated stand-in.
+which is the closest automated stand-in. It is also the only one that has to
+build its own network: it installs the CNI plugin binaries pinned in
+`versions.env` before `kubeadm init`, because flannel ships only its own plugin
+and its config chains three more.
 
 ## Environment
 

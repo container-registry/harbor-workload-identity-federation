@@ -57,6 +57,19 @@ retry() {
   done
 }
 
+# Waits for the cluster to have a Ready node. The registration wait comes first
+# because a distro can serve a kubeconfig before its node exists, and
+# `kubectl wait --all` against nothing matches nothing and returns at once.
+wait_for_nodes() {
+  local timeout="${1:-5m}"
+  retry 60 5 node_registered
+  kubectl wait --for=condition=Ready nodes --all --timeout="${timeout}"
+}
+
+node_registered() {
+  [ -n "$(kubectl get nodes -o name 2>/dev/null)" ]
+}
+
 # k3s, RKE2, MicroK8s and kubeadm install onto the machine that runs them and
 # restart its kubelet. Only a throwaway VM should agree to that.
 host_install_guard() {
@@ -81,6 +94,15 @@ dump_state() {
   kubectl get nodes -o wide || true
   kubectl get pods -A -o wide || true
   kubectl describe "daemonset/${E2E_RELEASE}" -n "${E2E_NAMESPACE}" || true
+  # Whatever stopped a pod short of Running is in its events, not the
+  # DaemonSet's. A sandbox that never came up says so only here. Listed first
+  # and described one at a time, because describe takes no field selector.
+  kubectl get pods -A --no-headers \
+    --field-selector=status.phase!=Running,status.phase!=Succeeded \
+    -o 'custom-columns=NS:.metadata.namespace,NAME:.metadata.name' 2>/dev/null \
+    | while read -r ns name; do
+        kubectl describe pod "${name}" -n "${ns}" || true
+      done
   kubectl logs -n "${E2E_NAMESPACE}" \
     -l app.kubernetes.io/name=credential-provider-harbor --tail=200 --prefix || true
 }
