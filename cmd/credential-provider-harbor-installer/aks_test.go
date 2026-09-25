@@ -92,7 +92,7 @@ func TestSetKubeletFlagsHandlesTheShapesAKSWrites(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := setKubeletFlags(tt.content, binDir, configPath)
+			got, err := setKubeletFlags(tt.content, "KUBELET_FLAGS", binDir, configPath)
 			if err != nil {
 				t.Fatalf("setKubeletFlags() error: %v", err)
 			}
@@ -100,7 +100,7 @@ func TestSetKubeletFlagsHandlesTheShapesAKSWrites(t *testing.T) {
 				t.Fatalf("setKubeletFlags() =\n%q\nwant\n%q", got, tt.want)
 			}
 
-			again, err := setKubeletFlags(got, binDir, configPath)
+			again, err := setKubeletFlags(got, "KUBELET_FLAGS", binDir, configPath)
 			if err != nil {
 				t.Fatalf("second setKubeletFlags() error: %v", err)
 			}
@@ -117,7 +117,7 @@ func TestSetKubeletFlagsRejectsAFileWithNoActiveAssignment(t *testing.T) {
 		"# KUBELET_FLAGS=\"--max-pods=110\"\n",
 		"KUBELET_EXTRA_ARGS=\"--max-pods=110\"\n",
 	} {
-		if _, err := setKubeletFlags(content, "/bin", "/config.yaml"); err == nil {
+		if _, err := setKubeletFlags(content, "KUBELET_FLAGS", "/bin", "/config.yaml"); err == nil {
 			t.Fatalf("setKubeletFlags(%q) returned nil error, want no-assignment error", content)
 		}
 	}

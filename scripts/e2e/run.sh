@@ -42,7 +42,10 @@ teardown() {
 }
 
 log "building ${E2E_IMAGE}"
-docker build --build-arg VERSION="e2e" -t "${E2E_IMAGE}" "${REPO_ROOT}"
+# Retried because the base image comes from Docker Hub, which resets the
+# connection often enough to lose a distro's whole run to something that has
+# nothing to do with the chart.
+retry 3 15 docker build --build-arg VERSION="e2e" -t "${E2E_IMAGE}" "${REPO_ROOT}"
 
 # Armed before the cluster exists: a distro that fails halfway through its
 # install has still left something behind to clean up.

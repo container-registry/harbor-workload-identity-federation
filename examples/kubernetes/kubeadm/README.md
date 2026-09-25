@@ -9,6 +9,7 @@ The default case. Works on any node where kubelet runs under systemd and its uni
 | `/usr/local/bin/credential-providers/credential-provider-harbor` | The binary, copied from the deployer image |
 | `/etc/kubernetes/credential-providers/config.yaml` | The kubelet `CredentialProviderConfig` |
 | `/etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf` | A drop-in setting `KUBELET_EXTRA_ARGS` to the two provider flags |
+| `/etc/default/kubelet` | Only when it already assigns `KUBELET_EXTRA_ARGS`. systemd resolves `EnvironmentFile=` after `Environment=`, so an assignment there beats the drop-in and has to carry the flags too |
 
 Then `systemctl daemon-reload && systemctl restart kubelet`, one node at a time.
 
@@ -39,7 +40,9 @@ The two flags have to show up on the live kubelet process, not just in the drop-
 --image-credential-provider-config=/etc/kubernetes/credential-providers/config.yaml
 ```
 
-If the drop-in exists but the flags are missing from the process, the node's kubelet unit does not reference `$KUBELET_EXTRA_ARGS`. That is a distribution difference, not a bug here: see the [AKS](../aks/), [RKE2](../rke2/), or [MicroK8s](../microk8s/) notes for what to do instead.
+If the drop-in exists but the flags are missing from the process, check `/etc/default/kubelet` first. The kubeadm packages ship it with an empty `KUBELET_EXTRA_ARGS=`, and systemd lets that erase what the drop-in set, whichever order the drop-ins merge in. The installer patches that file when it finds such an assignment, so a node where it is still empty was configured by a version that did not.
+
+If both places carry the flags and the process still does not, the node's kubelet unit does not reference `$KUBELET_EXTRA_ARGS` at all. That is a distribution difference: see the [AKS](../aks/), [RKE2](../rke2/), or [MicroK8s](../microk8s/) notes for what to do instead.
 
 ## Then Pull Something
 
