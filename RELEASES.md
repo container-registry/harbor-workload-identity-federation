@@ -32,6 +32,10 @@ The same override-not-merge rule applies to `exclude-paths`. The root package re
 
 Each train publishes only its own artifacts. A chart-only release does not rebuild the binaries or the image, and a binary release does not publish the chart.
 
+A binary release does, however, leave the chart behind. It rewrites `appVersion`, which moves the image the chart installs by default, but the chart published before it still carries the old one. release-please will not release the chart for that: the commit that moved `appVersion` is its own `chore: release` commit, and it excludes those from both the changelog and the version it calculates.
+
+So `release-please.yml` closes the gap. After a binary release it runs `scripts/sync-chart-images.sh`, which points the chart's `artifacthub.io/images` annotation at the image the new `appVersion` resolves to, and commits that as `fix(chart):`. That commit touches the chart's own directory, so release-please opens a chart patch release for it, and the published chart catches up one version behind the binaries rather than staying on the old image. The job then invokes release-please a second time, because a push made with `GITHUB_TOKEN` does not trigger a workflow run and the chart pull request would otherwise wait for someone else's push. `task chart-images-check` keeps the annotation honest in the meantime.
+
 | Train | What gets published |
 |-------|---------------------|
 | Binaries and image | `linux/amd64` and `linux/arm64` builds of `credential-provider-harbor` and `credential-provider-harbor-installer`, plus `SHA256SUMS`, attached to the GitHub Release. The multi-arch deployer image is pushed with the release tag and `latest`. |

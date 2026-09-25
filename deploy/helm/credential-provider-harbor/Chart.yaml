@@ -20,6 +20,12 @@ maintainers:
 icon: https://container-registry.com/img/logo.svg
 annotations:
   artifacthub.io/license: Apache-2.0
+  # Kept in step with appVersion by scripts/sync-chart-images.sh, which the
+  # release workflow runs after an app release. That sync is what gives the
+  # chart a commit of its own to be released for.
+  artifacthub.io/images: |
+    - name: credential-provider-harbor-deployer
+      image: 8gears.container-registry.com/8gcr/credential-provider-harbor-deployer:v0.1.1
   artifacthub.io/operator: "false"
   artifacthub.io/links: |
     - name: source

@@ -29,6 +29,53 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # An app release moves the chart's appVersion, which moves the image the
+  # chart installs by default. release-please will not release the chart for
+  # that on its own: the commit that moved appVersion is its own chore commit,
+  # and it skips those. Syncing the images annotation gives the chart a commit
+  # it will release, and the second release-please run opens the pull request
+  # for it, which a GITHUB_TOKEN push cannot trigger on its own.
+  chart-follows-app:
+    needs: [release-please]
+    if: ${{ needs.release-please.outputs.app_released == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: main
+
+      - name: Sync the chart's images annotation
+        id: sync
+        run: |
+          ./scripts/sync-chart-images.sh
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit it
+        if: ${{ steps.sync.outputs.changed == 'true' }}
+        env:
+          APP_TAG: ${{ needs.release-please.outputs.app_tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -a -m "fix(chart): Install the ${APP_TAG} deployer by default" \
+            -m "Signed-off-by: Prasanth Baskar <prasanth@8gears.com>"
+          git push origin main
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        if: ${{ steps.sync.outputs.changed == 'true' }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
   binaries:
     needs: [release-please]
     if: ${{ needs.release-please.outputs.app_released == 'true' }}
