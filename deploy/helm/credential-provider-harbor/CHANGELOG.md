@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/container-registry/harbor-workload-identity-federation/compare/chart-v0.2.0...chart-v0.2.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **chart:** Install the v0.1.2 deployer by default ([e107e1d](https://github.com/container-registry/harbor-workload-identity-federation/commit/e107e1dd578593131797364e71effe37f4c0c4de))
+* **chart:** Publish a chart whose default image is the released one ([#37](https://github.com/container-registry/harbor-workload-identity-federation/issues/37)) ([9a5e3b0](https://github.com/container-registry/harbor-workload-identity-federation/commit/9a5e3b00eac847b78aa50b26e19becde7a4fcfd8))
+
 ## [0.2.0](https://github.com/container-registry/harbor-workload-identity-federation/compare/chart-v0.1.1...chart-v0.2.0) (2026-09-25)
 
 
