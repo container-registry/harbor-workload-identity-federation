@@ -10,17 +10,17 @@ Automatically updated from git history.
 <table>
 <tr>
     <td align="center">
-        <a href="https://github.com/Vad1mo">
-            <img src="https://avatars.githubusercontent.com/u/1492007?v=4" width="100;" alt="Vad1mo"/>
-            <br />
-            <sub><b>Vadim Bauer</b></sub>
-        </a>
-    </td>
-    <td align="center">
         <a href="https://github.com/bupd">
             <img src="https://avatars.githubusercontent.com/u/89722848?v=4" width="100;" alt="bupd"/>
             <br />
             <sub><b>Prasanth Baskar</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/Vad1mo">
+            <img src="https://avatars.githubusercontent.com/u/1492007?v=4" width="100;" alt="Vad1mo"/>
+            <br />
+            <sub><b>Vadim Bauer</b></sub>
         </a>
     </td></tr>
 </table>
