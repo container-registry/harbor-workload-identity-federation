@@ -26,10 +26,10 @@ jobs:
 
           # Pretty print the JWT token (header and payload)
           echo "=== JWT Header ==="
-          echo "$TOKEN" | cut -d'.' -f1 | base64 -d 2>/dev/null | jq .
+          echo "$TOKEN" | cut -d'.' -f1 | tr '_-' '/+' | base64 -d | jq .
           echo ""
           echo "=== JWT Payload ==="
-          echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+          echo "$TOKEN" | cut -d'.' -f2 | tr '_-' '/+' | base64 -d | jq .
 
       - name: Build and Push Image
         run: |

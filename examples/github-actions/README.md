@@ -24,6 +24,8 @@ Grant the robot account push or pull permission on the target Harbor project.
 
 ## Use The Example
 
+There is a [successful run](https://github.com/container-registry/federated-idp-examples/actions/runs/19678450809) of this workflow to compare against.
+
 Copy [`example_1.yml`](example_1.yml) to your repository:
 
 ```bash

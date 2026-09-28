@@ -27,8 +27,8 @@ and the kubelet is wired through `machine.kubelet.credentialProviderConfig`.
 
 Placeholders used below: `harbor.example.com` (the Harbor host, used here as the
 **audience** too), `<cluster-service-account-issuer>`, `<project>`/`<image>`.
-See the [root README](../../README.md) for the full Harbor Trusted Issuer
-reference and per-provider JWT claim tables.
+See [docs/token-reference.md](../../docs/token-reference.md) for the full Harbor
+Trusted Issuer reference and per-provider JWT claim tables.
 
 > [!NOTE]
 > **About the audience.** The audience (`aud`) is just an agreed identifier
