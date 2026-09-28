@@ -38,7 +38,10 @@ kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 
 ```bash
 kubectl apply -f examples/kubernetes/rbac-audience.yaml
-kubectl apply -f examples/kubernetes/pod-example.yaml
+
+HARBOR_IMAGE=harbor.example.com/library/httpd \
+  envsubst < examples/kubernetes/pod-example.yaml | kubectl apply -f -
+
 kubectl get pod httpd -w
 ```
 

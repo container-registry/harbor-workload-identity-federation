@@ -52,8 +52,12 @@ That writes the equivalent of [`../kind-kubelet-systemd-dropin.conf`](../kind-ku
 
 ```bash
 kubectl apply -f examples/kubernetes/rbac-audience.yaml
-kubectl apply -f examples/kubernetes/pod-example.yaml
+
+HARBOR_IMAGE=harbor.example.com/library/httpd \
+  envsubst < examples/kubernetes/pod-example.yaml | kubectl apply -f -
 ```
+
+`HARBOR_IMAGE` is an image that exists in your Harbor.
 
 `no basic auth credentials` on the pod almost always means kubelet never called the provider. Check the live command line before looking anywhere else.
 

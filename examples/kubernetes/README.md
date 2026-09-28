@@ -75,4 +75,9 @@ The Harbor side is documented in full: [Federated Identity Provider for Workload
 | [`rke2/config.yaml`](rke2/config.yaml) | The RKE2 config drop-in the installer writes |
 | [`kind-kubelet-systemd-dropin.conf`](kind-kubelet-systemd-dropin.conf) | The kind `ExecStart` override, for reference |
 
-The first four use `harbor.example.com` as the registry host and the audience; replace it with yours. The last three are kubelet wiring only and contain no registry reference. `pod-example.yaml` also needs an image that exists in your Harbor, or the pod sits in `ImagePullBackOff` and looks like a credential provider failure.
+The first four use `harbor.example.com` as the registry host and the audience; replace it with yours. The last three are kubelet wiring only and contain no registry reference. `pod-example.yaml` takes its image from `HARBOR_IMAGE`, so it applies in one command:
+
+```bash
+HARBOR_IMAGE=harbor.example.com/library/httpd \
+  envsubst < examples/kubernetes/pod-example.yaml | kubectl apply -f -
+```

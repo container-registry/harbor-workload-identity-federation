@@ -1,3 +1,20 @@
+# A pod that pulls from Harbor with no imagePullSecrets. The kubelet asks for a
+# service account token with your Harbor audience and hands it to
+# credential-provider-harbor, which returns it as the registry password.
+#
+# HARBOR_IMAGE is the one thing only you know. Apply it in one command:
+#
+#   HARBOR_IMAGE=harbor.example.com/library/httpd \
+#     envsubst < examples/kubernetes/pod-example.yaml | kubectl apply -f -
+#
+# envsubst ships with gettext. Without it, sed does the same job:
+#
+#   sed 's|${HARBOR_IMAGE}|harbor.example.com/library/httpd|' \
+#     examples/kubernetes/pod-example.yaml | kubectl apply -f -
+#
+# Applied without substituting, the pod fails with InvalidImageName and names
+# the variable, rather than sitting in ImagePullBackOff and looking like a
+# broken credential provider.
 apiVersion: v1
 kind: Pod
 metadata:
@@ -7,6 +24,5 @@ spec:
   serviceAccountName: default
   containers:
   - name: httpd
-    # change this to an image you actually have in Harbor
-    image: harbor.example.com/library/httpd
+    image: ${HARBOR_IMAGE}
     imagePullPolicy: Always
