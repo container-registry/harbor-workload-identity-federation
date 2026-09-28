@@ -80,8 +80,13 @@ kubelet:
   serviceName: ""
   # -- Override systemd drop-in path for generic/kind/gke/custom profiles.
   systemdDropInPath: ""
-  # -- For kind only: force a kubelet ExecStart override instead of only setting KUBELET_EXTRA_ARGS.
-  # Enable this if the live kubelet command line does not include the credential-provider flags after install.
+  # -- For kind only: force a kubelet ExecStart override instead of setting
+  # KUBELET_EXTRA_ARGS. Off by default, and no released kindest/node image
+  # needs it: those units do expand the variable, and the installer writes the
+  # flags into /etc/default/kubelet too, which is the file that used to erase
+  # them. Turn it on for a node image whose unit stops expanding the variable
+  # at all. It pins kind's kubelet command line into a file this chart writes,
+  # so it breaks when kind changes that command line.
   forceExecStartOverride: false
   # -- Override k3s config drop-in path for k3s/k3d profiles.
   k3sConfigDropInPath: ""

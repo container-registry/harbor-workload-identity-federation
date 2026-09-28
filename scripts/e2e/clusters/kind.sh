@@ -14,11 +14,8 @@ source "${E2E_ROOT}/versions.env"
 
 profile() { echo kind; }
 
-# kind's kubelet unit does not expand $KUBELET_EXTRA_ARGS, so the drop-in the
-# profile writes by default lands on disk and changes nothing. The README
-# calls this out as a wrinkle to check for; on current node images it is
-# every time. See issue #33.
-install-args() { echo "--set kubelet.forceExecStartOverride=true"; }
+# No install-args: the kind profile's defaults are what a reader of the docs
+# gets, and they have to be what the job tests. See issue #33.
 
 up() {
   need kind kubectl

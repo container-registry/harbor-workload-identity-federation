@@ -57,7 +57,7 @@ The profile decides the host paths and how kubelet gets told about them.
 
 `rke2`, `aks` and `microk8s` each wire kubelet the way their distribution expects, because none of them reads the `KUBELET_EXTRA_ARGS` drop-in that `generic` writes. `rke2` writes a new drop-in file. `aks` and `microk8s` edit a file the distribution owns, so they fail the install when it is not there rather than reporting success on a node they did not change. Per-distribution notes are in [`examples/kubernetes/`](../../../examples/kubernetes/).
 
-On `kind`, check that the live kubelet command line inside the node container has `--image-credential-provider-bin-dir` and `--image-credential-provider-config`. If pulls fail with `no basic auth credentials` and those flags are missing, kind did not pick up `KUBELET_EXTRA_ARGS`; reinstall with `--set kubelet.forceExecStartOverride=true`, which rewrites the kubelet `ExecStart` line instead.
+On `kind`, the node image ships an `/etc/default/kubelet` that assigns `KUBELET_EXTRA_ARGS` itself. systemd reads that file after every `Environment=` line, so it used to overwrite the drop-in and leave kubelet running with neither flag. The `kind` profile writes both places, keeping the argument the node image set. Check the live kubelet command line inside the node container for `--image-credential-provider-bin-dir` and `--image-credential-provider-config`; `--set kubelet.forceExecStartOverride=true` rewrites the kubelet `ExecStart` line instead, for a node image whose unit stops expanding the variable at all.
 
 ## Values
 
@@ -101,7 +101,7 @@ On `kind`, check that the live kubelet command line inside the node container ha
 | `kubelet.rke2ConfigDropInPath` | by profile | Drop-in written for `rke2`. |
 | `kubelet.kubeletDefaultsPath` | by profile | EnvironmentFile patched for `aks`. |
 | `kubelet.microk8sArgsPath` | by profile | Arguments file edited for `microk8s`. |
-| `kubelet.forceExecStartOverride` | `false` | kind only. See the note above. |
+| `kubelet.forceExecStartOverride` | `false` | kind only, and no released node image needs it. See the note above. |
 
 ### Workload
 

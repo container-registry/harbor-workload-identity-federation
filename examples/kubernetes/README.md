@@ -12,7 +12,7 @@ Pick your distribution. The pages differ because distributions disagree about wh
 | Amazon EKS | One `helm install`; the AMI already sets the kubelet flags | [`eks/`](eks/) |
 | k3s | One `helm install` | [`k3s/`](k3s/) |
 | k3d | One `helm install` | [`k3d/`](k3d/) |
-| kind | One `helm install`, sometimes plus an `ExecStart` override | [`kind/`](kind/) |
+| kind | One `helm install` | [`kind/`](kind/) |
 | GKE Standard | One `helm install`, but nodes lose it on replacement | [`gke/`](gke/) |
 | RKE2 | One `helm install` | [`rke2/`](rke2/) |
 | MicroK8s | One `helm install`; a snap refresh undoes it | [`microk8s/`](microk8s/) |

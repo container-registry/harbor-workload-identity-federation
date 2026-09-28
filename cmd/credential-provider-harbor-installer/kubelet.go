@@ -161,14 +161,20 @@ func syncKubeletEnvironmentFile(opts options) (bool, error) {
 	return changed, nil
 }
 
+// configureKindSystemdKubelet spells the two flags straight into ExecStart,
+// for a unit that does not expand $KUBELET_EXTRA_ARGS at all. The variable is
+// still expanded ahead of them, so whatever the node image put in it survives:
+// a kind node carries --runtime-cgroups there, and dropping that moves the
+// kubelet cgroup and breaks the node in a way that has nothing to do with
+// pulling images. Ours come last, which is the copy kubelet keeps if the
+// variable already holds an older pair.
 func configureKindSystemdKubelet(opts options) (bool, error) {
 	return writeHostFile(opts, hostFile{
 		path: systemdDropInPath(opts),
 		content: fmt.Sprintf(`[Service]
-Environment="KUBELET_EXTRA_ARGS=%[1]s=%[2]s %[3]s=%[4]s"
 ExecStart=
-ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS %[1]s=%[2]s %[3]s=%[4]s
-`, binDirFlag, opts.BinDir, configFlag, opts.ConfigPath),
+ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $%[5]s %[1]s=%[2]s %[3]s=%[4]s
+`, binDirFlag, opts.BinDir, configFlag, opts.ConfigPath, kubeletExtraArgsVar),
 		label: "kind kubelet systemd drop-in",
 		title: "Kind kubelet systemd drop-in",
 	})
