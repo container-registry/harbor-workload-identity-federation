@@ -34,6 +34,26 @@ helm upgrade --install credential-provider-harbor \
 kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 ```
 
+## Restart the Cluster
+
+A k3d node is a container running k3s as PID 1, with no init system behind it. The installer writes the binary, the config and the k3s config drop-in, then says it cannot restart anything from in there:
+
+```text
+[WARN] This node has no systemctl, so kubelet cannot be restarted from inside
+the cluster. The credential provider binary, config and drop-in are all
+written. Restart the cluster so k3s rereads its config: k3d cluster stop <name>
+&& k3d cluster start <name>.
+```
+
+k3s reads `config.yaml.d` at startup and nowhere else, so the flags take effect on the next start:
+
+```bash
+k3d cluster stop credential-provider-test
+k3d cluster start credential-provider-test --wait
+```
+
+The install is not finished until you have done that. Skipping it leaves the node with the files on disk and a k3s that has never read them, which fails a pull with `no basic auth credentials` and looks like a broken provider.
+
 ## Test
 
 ```bash

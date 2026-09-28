@@ -640,10 +640,10 @@ func TestInstallWritesTheMarkerOnlyAfterTheKubeletRestartReturns(t *testing.T) {
 	}
 
 	duringRestart := "not called"
-	restart := func(options) error {
+	restart := func(options) (bool, error) {
 		restarted = true
 		duringRestart = markerDuringRestart()
-		return nil
+		return true, nil
 	}
 
 	if err := install(opts, restart); err != nil {
@@ -671,7 +671,9 @@ func TestInstallWritesNoMarkerWhenTheKubeletRestartFails(t *testing.T) {
 	opts.RestartKubelet = true
 	marker := writeMarkerFile(t, opts, "install-id=old-revision\ncompleted-at=2026-03-04T05:06:07Z\n")
 
-	restart := func(options) error { return errors.New("systemctl restart kubelet: exit status 1") }
+	restart := func(options) (bool, error) {
+		return false, errors.New("systemctl restart kubelet: exit status 1")
+	}
 
 	if err := install(opts, restart); err == nil {
 		t.Fatal("install() returned nil error, want the kubelet restart error")
@@ -694,12 +696,12 @@ func TestTurningRestartsBackOnRestartsKubeletOnce(t *testing.T) {
 	// Mirrors restartKubelet, which returns without touching the node when
 	// RESTART_KUBELET is false.
 	restarts := 0
-	restart := func(o options) error {
+	restart := func(o options) (bool, error) {
 		if !o.RestartKubelet {
-			return nil
+			return false, nil
 		}
 		restarts++
-		return nil
+		return true, nil
 	}
 
 	if err := install(opts, restart); err != nil {
@@ -888,9 +890,9 @@ func TestInstallRejectsARootMarkerBeforeTouchingTheHost(t *testing.T) {
 	opts.InstalledMarker = "/"
 
 	restarted := false
-	err := install(opts, func(options) error {
+	err := install(opts, func(options) (bool, error) {
 		restarted = true
-		return nil
+		return true, nil
 	})
 	if err == nil {
 		t.Fatal("install() returned nil error, want a marker path error")

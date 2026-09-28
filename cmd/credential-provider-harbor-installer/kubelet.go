@@ -432,24 +432,74 @@ func setMicroK8sKubeletArgs(content, binDir, configPath string) string {
 	return strings.Join(kept, "\n")
 }
 
-func restartKubelet(opts options) error {
+// restartKubelet brings the node's kubelet back against the flags this install
+// wrote, and reports whether that happened. A node the installer cannot restart
+// is not an error: the files are already on disk, and saying what to do next is
+// more use than an exit code the DaemonSet turns into a crash loop.
+func restartKubelet(opts options) (bool, error) {
 	if !opts.RestartKubelet {
 		fmt.Println("[WARN] Kubelet restart disabled. Restart or roll nodes before testing image pulls.")
-		return nil
+		return false, nil
+	}
+
+	if !nodeHasSystemctl() {
+		fmt.Printf("[WARN] %s\n", noSystemctlMessage(opts))
+		return false, nil
 	}
 
 	services, err := kubeletServices(opts, systemdRunsUnit)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	fmt.Printf("[INFO] Restarting %s\n", strings.Join(services, " "))
 	if opts.ConfigureKubelet && opts.Profile != "eks" && opts.Profile != "aws" {
 		if err := systemctl("daemon-reload"); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return systemctl(append([]string{"restart"}, services...)...)
+	if err := systemctl(append([]string{"restart"}, services...)...); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// nodeHasSystemctl reports whether there is a systemctl the installer can
+// drive, on the node through nsenter or in this container. A k3d or k3s-in-
+// Docker node runs the distribution as its own PID 1 with no init system
+// behind it, so there is nothing to ask for a restart there.
+//
+// Only a missing command answers no. Any other failure of the probe is left
+// for the restart itself to report, so a node where systemctl is present but
+// refuses to run still fails loudly.
+func nodeHasSystemctl() bool {
+	err := systemctlQuiet("--version")
+	return !errors.Is(err, errSystemctlMissing)
+}
+
+// noSystemctlMessage says what this run left on the node and what the node
+// still needs, in the terms of the distribution the profile names.
+func noSystemctlMessage(opts options) string {
+	// Only what this run actually wrote. A profile that configures no kubelet
+	// arguments leaves a node that needs more than a restart, and saying
+	// otherwise would send the reader to reboot it for nothing.
+	written := "The credential provider binary and config are written"
+	if opts.ConfigureKubelet && opts.Profile != "eks" && opts.Profile != "aws" {
+		written += ", and so is the kubelet configuration this profile owns"
+	}
+	written += "."
+
+	restart := "Reboot or recreate the node so kubelet starts against them."
+	switch opts.Profile {
+	case "k3d":
+		restart = "Restart the cluster so k3s rereads its config: k3d cluster stop <name> && k3d cluster start <name>."
+	case "k3s":
+		restart = "Restart the container running k3s so it rereads its config."
+	case "kind":
+		restart = "Recreate the node container so kubelet starts against them."
+	}
+	return "This node has no systemctl, so kubelet cannot be restarted from inside the cluster. " +
+		written + " " + restart
 }
 
 // kubeletServices lists the units that have to come back before the node runs
@@ -477,6 +527,11 @@ func systemctlQuiet(args ...string) error {
 	return runSystemctl(io.Discard, io.Discard, args...)
 }
 
+// errSystemctlMissing reports that neither the node nor this container has a
+// systemctl to run. It is the state a k3d node is in, where PID 1 is k3s
+// itself and there is no init system behind it.
+var errSystemctlMissing = errors.New("no systemctl on this node")
+
 func runSystemctl(stdout, stderr io.Writer, args ...string) error {
 	cmdArgs := append([]string{"-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "systemctl"}, args...)
 	cmd := exec.Command("nsenter", cmdArgs...)
@@ -484,17 +539,36 @@ func runSystemctl(stdout, stderr io.Writer, args ...string) error {
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err == nil {
 		return nil
-	} else if !errors.Is(err, exec.ErrNotFound) {
+	} else if !commandNotFound(err) {
 		return fmt.Errorf("nsenter systemctl %s: %w", strings.Join(args, " "), err)
 	}
 
+	// Either nsenter is not in this image, or it entered the node's namespaces
+	// and found no systemctl there. This container's own systemctl is the last
+	// thing left to try, and on a node without an init system there is none of
+	// that either.
 	cmd = exec.Command("systemctl", args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return fmt.Errorf("%w: systemctl %s", errSystemctlMissing, strings.Join(args, " "))
+		}
 		return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
 	}
 	return nil
+}
+
+// commandNotFound reports whether the command never ran. Go says so with
+// exec.ErrNotFound when the binary is not on PATH; nsenter says so with exit
+// status 127, the shell convention it follows when it cannot exec the command
+// inside the target namespaces.
+func commandNotFound(err error) bool {
+	if errors.Is(err, exec.ErrNotFound) {
+		return true
+	}
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ExitCode() == 127
 }
 
 func detectK3sService(opts options, fallback string) string {

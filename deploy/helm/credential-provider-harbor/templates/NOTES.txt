@@ -70,6 +70,17 @@ out one node at a time.
 
 {{- end }}
 
+{{- if and .Values.kubelet.restart (eq .Values.profile "k3d") }}
+
+IMPORTANT: a k3d node runs k3s as its own PID 1 and has no init system, so the
+installer cannot restart it from inside the cluster. It writes the files, says
+so in its log, and leaves the restart to you. k3s reads its config drop-ins at
+startup, so the flags take effect on the next start:
+
+  k3d cluster stop <cluster> && k3d cluster start <cluster>
+
+{{- end }}
+
 Don't forget to apply the RBAC for audience token requests:
 
 {{- if .Values.nodeAudienceRbac.create }}

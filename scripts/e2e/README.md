@@ -47,13 +47,16 @@ than in somebody's cluster.
 | [`microk8s`](clusters/microk8s.sh) | `microk8s` | snap on the machine |
 | [`kubeadm`](clusters/kubeadm.sh) | `generic` | installed on the machine |
 
-kind installs with `--set kubelet.forceExecStartOverride=true`, without which
-kubelet comes back up ignoring the flags the drop-in set
-([issue #33](https://github.com/container-registry/harbor-workload-identity-federation/issues/33)).
-k3d installs with `--set kubelet.restart=false` and restarts the cluster
-itself, because a k3d node has no init system for the installer to ask and the
-attempt crashloops the DaemonSet. That is [issue #32](https://github.com/container-registry/harbor-workload-identity-federation/issues/32),
-not a property of the test.
+Neither container distro should need a workaround flag at install time. The goal
+is that the job installs what a reader of the docs installs, so a bug in the
+installer shows up here rather than being papered over. kind needed
+`--set kubelet.forceExecStartOverride=true` ([issue #33](https://github.com/container-registry/harbor-workload-identity-federation/issues/33))
+and k3d `--set kubelet.restart=false` ([issue #32](https://github.com/container-registry/harbor-workload-identity-federation/issues/32)),
+each a workaround for a bug in the installer rather than a property of the test.
+What a distro passes today is in its own `install-args`, or in the absence of
+one. k3d also restarts the cluster between the install and the verification,
+because a k3d node has no init system for the installer to ask and k3s reads
+its config drop-in only at startup.
 
 > [!WARNING]
 > The bottom four install a Kubernetes distribution onto the machine that runs
@@ -92,7 +95,7 @@ Three more are optional, and default to doing nothing in
 distro needs, `restart-nodes` runs between the install and the verification for
 a distro whose kubelet the installer cannot restart from inside the cluster,
 and `dump-node` prints what only the node can answer when a run has failed.
-kind uses the first, k3d the first two, kubeadm the last.
+Each script defines only the ones its distro needs.
 
 Everything after that is
 [`install-test.sh`](install-test.sh), which is distro-agnostic on purpose. Then

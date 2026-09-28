@@ -301,7 +301,7 @@ func run(opts options) error {
 // and the seam is here so a test can prove that ordering rather than argue it:
 // a restart that takes minutes, or never succeeds, must not leave a marker
 // behind that reports the pod Ready and lets the rollout move to the next node.
-func install(opts options, restart func(options) error) error {
+func install(opts options, restart func(options) (bool, error)) error {
 	fmt.Println("[INFO] === credential-provider-harbor installer ===")
 	fmt.Printf("[INFO] Version: %s\n", version)
 	fmt.Printf("[INFO] Profile: %s\n", opts.Profile)
@@ -362,10 +362,15 @@ func install(opts options, restart func(options) error) error {
 	// whatever restart happened for the previous one no longer counts.
 	restarted := previous.KubeletRestarted && previous.InstallID == opts.InstallID
 	if kubeletRestartNeeded(changed, previous, opts) {
-		if err := restart(opts); err != nil {
+		// False whenever kubelet did not come back against these flags, which
+		// covers restarts turned off and nodes with no init system to ask. The
+		// marker carries that forward, so the next run still knows the node is
+		// holding files kubelet has never started against.
+		didRestart, err := restart(opts)
+		if err != nil {
 			return err
 		}
-		restarted = opts.RestartKubelet
+		restarted = didRestart
 	}
 
 	// Last, and only once the kubelet restart has returned. The probe turns the
