@@ -101,14 +101,6 @@ repository:
 | Image Factory catalog | Talos **v1.14.0-rc.1 and later** |
 | Source | [siderolabs/extensions/container-runtime/harbor-credential-provider](https://github.com/siderolabs/extensions/tree/main/container-runtime/harbor-credential-provider) |
 
-The extension definition builds the provider command by path. Its `pkg.yaml`
-runs `go build ./cmd/credential-provider-harbor`, the path this repository used
-before the command moved to `cmd/harbor-credential-provider`, and
-`HARBOR_WIF_VERSION` in `container-runtime/vars.yaml` pins the release it
-builds from (`v0.0.1`). Bumping that pin to a tag that carries the rename has
-to change the build path in the same siderolabs/extensions change, otherwise
-the extension build fails on the first tag that contains the rename.
-
 > [!IMPORTANT]
 > The provider `name` in the kubelet config must equal the file name the
 > extension installs, `harbor-credential-provider`. The kubelet resolves the
