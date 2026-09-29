@@ -186,7 +186,69 @@ Once those nodes are Ready, label the next batch. Labelling a node creates its i
 
 ## Uninstalling
 
-`helm uninstall` removes the DaemonSet, the ServiceAccount, and the RBAC. It does not undo what the installer wrote on the nodes: the binary, the credential provider config, the kubelet drop-in, and the marker file stay, and kubelet keeps calling the provider. Remove those by hand, or with a one-shot job, before you consider a node clean. A leftover marker cannot mislead a later install, because the installer deletes it before it starts work, but it is one more file on the node.
+```bash
+helm uninstall credential-provider-harbor -n kube-system
+```
+
+Removes the DaemonSet, the ServiceAccount and the RBAC. Touches nothing on the nodes, and is the whole job if the nodes are about to be replaced.
+
+What the installer wrote stays: the binary, the provider entry, the kubelet configuration where one was written, and the marker. Kubelet keeps calling the provider until its config stops naming it.
+
+### What stays on a node
+
+Profile defaults. `credentialProvider.binDir`, `credentialProvider.configPath` and `installer.installedMarker` move them.
+
+| Profile | Binary | Credential provider config | Kubelet configuration |
+|---------|--------|----------------------------|-----------------------|
+| `generic`, `custom`, `gke` | `/usr/local/bin/credential-providers/credential-provider-harbor` | `/etc/kubernetes/credential-providers/config.yaml` | `/etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf` |
+| `eks`, `aws` | `/etc/eks/image-credential-provider/credential-provider-harbor` | `/etc/eks/image-credential-provider/config.json` | none: the AMI carries the flags, so EKS installs with `kubelet.configure=false` |
+| `k3s`, `k3d` | `/var/lib/rancher/credentialprovider/bin/credential-provider-harbor` | `/var/lib/rancher/credentialprovider/config.yaml` | `/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml` |
+| `rke2` | `/var/lib/rancher/credentialprovider/bin/credential-provider-harbor` | `/var/lib/rancher/credentialprovider/config.yaml` | `/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml` |
+| `kind` | `/var/lib/kubelet/credential-provider/credential-provider-harbor` | `/var/lib/kubelet/credential-provider-config.yaml` | `/etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf` |
+| `aks` | `/usr/local/bin/credential-providers/credential-provider-harbor` | `/etc/kubernetes/credential-providers/config.yaml` | that drop-in, plus a `KUBELET_FLAGS` edit in `/etc/default/kubelet` |
+| `microk8s` | `/var/snap/microk8s/common/credentialprovider/bin/credential-provider-harbor` | `/var/snap/microk8s/common/credentialprovider/config.yaml` | an argument in `/var/snap/microk8s/current/args/kubelet` |
+
+Kubelet configuration exists only where the install ran with `kubelet.configure=true`, the default everywhere except EKS. The marker is `/var/lib/credential-provider-harbor/install-marker` on every profile.
+
+### Cleaning a node
+
+Entry out, restart, then delete.
+
+Kubelet reads the credential provider config at startup, so it keeps exec'ing the provider until a restart. Delete the binary first and pulls from that one registry fail against a missing file, which reads like a registry outage.
+
+On a `generic` node, the chart's default:
+
+```bash
+# 1. Remove the credential-provider-harbor entry from the providers list.
+sudo "${EDITOR:-vi}" /etc/kubernetes/credential-providers/config.yaml
+
+# 2. Remove the kubelet drop-in and reload, so the restart comes up without
+#    the flags.
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf
+sudo systemctl daemon-reload
+
+# 3. Kubelet reads both only at startup.
+sudo systemctl restart kubelet
+
+# 4. Nothing calls it now.
+sudo rm -f /usr/local/bin/credential-providers/credential-provider-harbor
+sudo rm -f /var/lib/credential-provider-harbor/install-marker
+```
+
+Substitute the paths for your profile from the table above. What changes by profile:
+
+- **Step 2 does not apply on EKS.** The AMI supplies the flags, so no drop-in was written.
+- **k3s and RKE2** keep that configuration in `config.yaml.d` rather than a systemd drop-in, and step 3 restarts the supervisor: whichever of `k3s`/`k3s-agent` or `rke2-server`/`rke2-agent` the node runs.
+- **AKS** has a `KUBELET_FLAGS` edit in `/etc/default/kubelet` on top of the drop-in.
+- **MicroK8s** keeps kubelet arguments in `/var/snap/microk8s/current/args/kubelet`, and the unit is `snap.microk8s.daemon-kubelite`.
+
+Deleting the config file outright works where the provider is its only entry. Not on EKS, where it is shared with `ecr-credential-provider`: remove that entry and the AWS add-ons stop pulling.
+
+The per-distribution pages under [`examples/kubernetes/`](../../../examples/kubernetes/) carry these steps already filled in.
+
+### Replacing the node instead
+
+`helm uninstall`, then roll the node group. Replacements come up clean: no per-node editing, no kubelet restart to schedule.
 
 ## Harbor Side
 

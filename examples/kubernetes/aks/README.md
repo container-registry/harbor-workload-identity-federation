@@ -44,3 +44,34 @@ Node image upgrades behave the same way: the upgraded node is a new node, and th
 ## If the Install Fails
 
 The installer stops with an error when `/etc/default/kubelet` has no active `KUBELET_FLAGS` assignment, rather than reporting success on a node it did not change. A node image that does not use `KUBELET_FLAGS` is not one this profile can wire, so set `kubelet.configure=false` and add the flags however that image expects them.
+
+## Uninstall
+
+```bash
+helm uninstall credential-provider-harbor -n kube-system
+```
+
+A node image upgrade or scale-out replaces nodes, and replacements come up clean.
+
+To clean a node in place, AKS has two things to undo: the systemd drop-in and the `KUBELET_FLAGS` edit in `/etc/default/kubelet`.
+
+Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
+
+```bash
+# 1. Take the entry out of the providers list.
+sudo "${EDITOR:-vi}" /etc/kubernetes/credential-providers/config.yaml
+
+# 2. Undo the kubelet configuration.
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf
+sudo "${EDITOR:-vi}" /etc/default/kubelet   # drop the flags from KUBELET_FLAGS
+sudo systemctl daemon-reload
+
+# 3. Restart, then delete.
+sudo systemctl restart kubelet
+sudo rm -f /usr/local/bin/credential-providers/credential-provider-harbor
+sudo rm -f /var/lib/credential-provider-harbor/install-marker
+```
+
+Delete `config.yaml` outright where the provider is its only entry.
+
+Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).

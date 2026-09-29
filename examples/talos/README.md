@@ -283,3 +283,25 @@ ServiceAccount token.
 | [`talos-machine-config-patch.yaml`](talos-machine-config-patch.yaml) | `machine.kubelet.credentialProviderConfig` patch that wires the kubelet to `harbor-credential-provider`. |
 | [`node-audience-rbac.yaml`](node-audience-rbac.yaml) | RBAC for kubelets to request service account tokens with the Harbor audience. |
 | [`workload-example.yaml`](workload-example.yaml) | Namespace + dedicated ServiceAccount + Deployment that pulls from Harbor without `imagePullSecrets`. |
+
+## Uninstall
+
+No Helm release, and nothing written onto a node by an installer. Removal is the same declarative steps in reverse.
+
+```bash
+# 1. Drop the RBAC.
+kubectl delete -f examples/talos/node-audience-rbac.yaml
+
+# 2. Remove the credentialProviderConfig from the machine config.
+talosctl --nodes <worker-ip> patch mc --mode auto \
+  --patch '[{"op":"remove","path":"/machine/kubelet/credentialProviderConfig"}]'
+```
+
+The extension ships in the boot image, so removing it means a schematic without `siderolabs/harbor-credential-provider` and an upgrade to the image it produces:
+
+```bash
+talosctl --nodes <worker-ip> upgrade \
+  --image factory.talos.dev/installer/<new-schematic-id>:<talos-version>
+```
+
+Leaving the extension installed is harmless once the kubelet no longer points at it: a binary nothing calls.

@@ -53,3 +53,30 @@ sudo snap refresh --hold microk8s
 ## If the Install Fails
 
 The installer stops with an error when `/var/snap/microk8s/current/args/kubelet` is not there, rather than reporting success on a node it did not change. That path exists on any node with MicroK8s installed, so its absence means the profile is pointed at the wrong node.
+
+## Uninstall
+
+```bash
+helm uninstall credential-provider-harbor -n kube-system
+```
+
+MicroK8s keeps kubelet arguments in an args file, not a systemd drop-in, and the service is `snap.microk8s.daemon-kubelite`.
+
+Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
+
+```bash
+# 1. Take the flags out of the kubelet args.
+sudo "${EDITOR:-vi}" /var/snap/microk8s/current/args/kubelet
+
+# 2. Take the entry out of the providers list.
+sudo "${EDITOR:-vi}" /var/snap/microk8s/common/credentialprovider/config.yaml
+
+# 3. Restart kubelite, then delete.
+sudo snap restart microk8s.daemon-kubelite
+sudo rm -f /var/snap/microk8s/common/credentialprovider/bin/credential-provider-harbor
+sudo rm -f /var/lib/credential-provider-harbor/install-marker
+```
+
+Binary and config live under `common`, which survives a snap refresh, so they outlast one unless removed. The args file is under `current`, which does not: see [Snap Refreshes](#snap-refreshes).
+
+Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).

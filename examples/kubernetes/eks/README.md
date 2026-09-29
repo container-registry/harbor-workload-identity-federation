@@ -53,3 +53,31 @@ That URL is publicly reachable, so the Harbor Trusted Issuer can validate tokens
 ```bash
 ./scripts/verify-node-install.sh
 ```
+
+## Uninstall
+
+```bash
+helm uninstall credential-provider-harbor -n kube-system
+```
+
+Removes the DaemonSet, the ServiceAccount and the RBAC. Touches no node. Enough on its own if the node group is about to roll: replacements come up from the AMI clean.
+
+To clean a node in place: `config.json` is shared with `ecr-credential-provider`, so edit it rather than delete it. Take the AWS entry out and the VPC CNI, kube-proxy and CoreDNS stop pulling.
+
+Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
+
+```bash
+# 1. Remove only the credential-provider-harbor entry.
+sudo "${EDITOR:-vi}" /etc/eks/image-credential-provider/config.json
+
+# 2. Kubelet reads that file only at startup.
+sudo systemctl restart kubelet
+
+# 3. Nothing calls it now.
+sudo rm -f /etc/eks/image-credential-provider/credential-provider-harbor
+sudo rm -f /var/lib/credential-provider-harbor/install-marker
+```
+
+No kubelet drop-in to remove: the AMI supplies the flags, hence `kubelet.configure=false`.
+
+Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).

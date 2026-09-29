@@ -62,3 +62,13 @@ kubectl apply -f examples/kubernetes/pod-example.yaml
 kind needs nothing passed at cluster creation for this. kubelet's request for a Harbor token is authorized by the node audience RBAC the chart creates. The API server's `--api-audiences` governs the tokens it accepts, not the ones it issues, so your registry does not belong there.
 
 For Harbor to validate tokens from a local kind cluster, the cluster issuer has to be reachable from Harbor, or the Trusted Issuer has to be configured with inline JWKS. The [Talos example](../../talos/) has the offline JWKS recipe, which applies here too.
+
+## Cleanup
+
+The cluster is disposable, so deleting it is the removal:
+
+```bash
+kind delete cluster --name credential-provider-test
+```
+
+Keeping the cluster: `helm uninstall credential-provider-harbor -n kube-system`, then per node container take the entry out of `/var/lib/kubelet/credential-provider-config.yaml`, delete `/etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf`, restart kubelet, then delete `/var/lib/kubelet/credential-provider/credential-provider-harbor`. Order matters, for the reason [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling) gives.
