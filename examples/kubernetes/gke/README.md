@@ -70,3 +70,32 @@ It is publicly reachable, so the Harbor Trusted Issuer can validate online.
 ```
 
 On COS, expect `--image-credential-provider-bin-dir=/home/kubernetes/bin/credential-providers`.
+
+## Uninstall
+
+```bash
+helm uninstall credential-provider-harbor -n kube-system
+```
+
+GKE already undoes the node half on every node recreate, as [What GKE Undoes](#what-gke-undoes) describes. Recreating the pool is the cleanest removal here and needs no per-node work.
+
+To clean a node in place, the binary path depends on the pool.
+
+Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
+
+```bash
+# 1. Take the entry out of the providers list.
+sudo "${EDITOR:-vi}" /etc/kubernetes/credential-providers/config.yaml
+
+# 2. Remove the drop-in.
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf
+sudo systemctl daemon-reload
+
+# 3. Restart, then delete.
+sudo systemctl restart kubelet
+sudo rm -f /var/lib/credential-provider-harbor/install-marker
+sudo rm -f /usr/local/bin/credential-providers/credential-provider-harbor      # Ubuntu, profile: generic
+sudo rm -f /home/kubernetes/bin/credential-providers/credential-provider-harbor # COS, profile: custom
+```
+
+Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).

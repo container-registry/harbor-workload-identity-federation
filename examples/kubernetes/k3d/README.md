@@ -54,6 +54,10 @@ Paste that into the Trusted Issuer. The [Talos example](../../talos/) walks thro
 
 ## Cleanup
 
+The cluster is disposable, so deleting it is the removal. The nodes were containers, so nothing is left behind:
+
 ```bash
 k3d cluster delete credential-provider-test
 ```
+
+Keeping the cluster: the k3s steps apply unchanged, and [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling) has the paths and the order.

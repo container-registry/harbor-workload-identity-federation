@@ -59,3 +59,31 @@ The flags do not appear on any command line here: the supervisor passes them to 
 ```bash
 grep -r image-credential-provider /etc/rancher/rke2/
 ```
+
+## Uninstall
+
+```bash
+helm uninstall credential-provider-harbor -n kube-system
+```
+
+Both unit files exist on every node, so go by which one systemd has active, not by which files are present.
+
+Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
+
+```bash
+# 1. Remove the drop-in.
+sudo rm -f /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml
+
+# 2. Take the entry out of the providers list.
+sudo "${EDITOR:-vi}" /var/lib/rancher/credentialprovider/config.yaml
+
+# 3. Restart the unit this node runs, then delete.
+systemctl is-active rke2-server rke2-agent
+sudo systemctl restart rke2-server    # or rke2-agent
+sudo rm -f /var/lib/rancher/credentialprovider/bin/credential-provider-harbor
+sudo rm -f /var/lib/credential-provider-harbor/install-marker
+```
+
+If you set `kubelet-arg` yourself instead of letting the chart write the drop-in, undo that edit.
+
+Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).

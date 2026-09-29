@@ -45,3 +45,30 @@ journalctl -u k3s -u k3s-agent | grep -i credential-provider
 ```
 
 Server nodes run `k3s.service` and agent nodes run `k3s-agent.service`, so the log check names both units; naming only `k3s` returns nothing on an agent. The drop-in `cat` is the half that works the same everywhere.
+
+## Uninstall
+
+```bash
+helm uninstall credential-provider-harbor -n kube-system
+```
+
+The node half is a k3s config drop-in, not a systemd one.
+
+Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
+
+```bash
+# 1. Remove the drop-in.
+sudo rm -f /etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml
+
+# 2. Take the entry out of the providers list.
+sudo "${EDITOR:-vi}" /var/lib/rancher/credentialprovider/config.yaml
+
+# 3. Restart the unit this node runs, then delete.
+sudo systemctl restart k3s        # k3s-agent on an agent node
+sudo rm -f /var/lib/rancher/credentialprovider/bin/credential-provider-harbor
+sudo rm -f /var/lib/credential-provider-harbor/install-marker
+```
+
+Delete `config.yaml` outright where the provider is its only entry.
+
+Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).

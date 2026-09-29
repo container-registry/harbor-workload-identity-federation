@@ -64,3 +64,29 @@ If `/usr/local` is read-only or noexec on your node image, switch to `profile=cu
 --set credentialProvider.binDir=/opt/credential-providers \
 --set credentialProvider.configPath=/etc/kubernetes/credential-providers/config.yaml
 ```
+
+## Uninstall
+
+```bash
+helm uninstall credential-provider-harbor -n kube-system
+```
+
+Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
+
+```bash
+# 1. Take the entry out of the providers list.
+sudo "${EDITOR:-vi}" /etc/kubernetes/credential-providers/config.yaml
+
+# 2. Remove the drop-in.
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf
+sudo systemctl daemon-reload
+
+# 3. Restart, then delete.
+sudo systemctl restart kubelet
+sudo rm -f /usr/local/bin/credential-providers/credential-provider-harbor
+sudo rm -f /var/lib/credential-provider-harbor/install-marker
+```
+
+Installed with `profile=custom`? Substitute the `credentialProvider.binDir` and `credentialProvider.configPath` you passed.
+
+Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).
