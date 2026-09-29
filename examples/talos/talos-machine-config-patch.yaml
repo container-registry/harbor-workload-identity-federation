@@ -21,7 +21,6 @@ machine:
       providers:
         # Must equal the binary file name installed by the extension:
         # /usr/local/lib/kubelet/credentialproviders/harbor-credential-provider
-        # (note: NOT harbor-credential-provider as in the other examples).
         - name: harbor-credential-provider
           apiVersion: credentialprovider.kubelet.k8s.io/v1
           # A bare host matches all images under that registry: the kubelet

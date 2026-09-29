@@ -267,7 +267,7 @@ check_node() {
   case "${files}" in *CONFIG_OK*) ok=yes ;; *) ok=no ;; esac
   report "${ok}" "config present" "config missing at ${configpath}" || failed=1
   case "${files}" in *ENTRY_OK*) ok=yes ;; *) ok=no ;; esac
-  report "${ok}" "provider entry present" "config has no harbor-credential-provider entry" || failed=1
+  report "${ok}" "provider entry present" "config has no ${BINARY_NAME} entry" || failed=1
 
   return "${failed}"
 }

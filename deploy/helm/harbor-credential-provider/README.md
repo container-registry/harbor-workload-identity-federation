@@ -285,7 +285,9 @@ sudo rm -f /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml   
 
 EKS writes none of these, so there is only the marker to remove there.
 
-All of it is inert. Every one of those files points at the same binary directory and config path as its replacement, because the rename did not move them: the systemd drop-in is read before `99-harbor-credential-provider.conf` alphabetically and loses to it, and the k3s and RKE2 drop-ins hand the embedded kubelet the same two `kubelet-arg` values twice over. The old marker is only ever read by an installer running under the old name. They are leftovers to tidy, not a reason to hurry.
+Those files are inert once the new install has written its replacement kubelet configuration. Every one of them points at the same binary directory and config path as its replacement, because the rename did not move them: systemd reads the old drop-in before `99-harbor-credential-provider.conf` alphabetically and the later one wins, and the k3s and RKE2 drop-ins hand the embedded kubelet the same two `kubelet-arg` values twice over. The old marker is only ever read by an installer running under the old name. On such a node they are leftovers to tidy, not a reason to hurry.
+
+That holds only where a replacement was written. With `kubelet.configure=false`, or a custom path that put the new configuration somewhere else, the new install leaves no file for the old one to lose to, and the old drop-in is still the live kubelet configuration. Remove it, or rewrite it for the new install, before treating the upgrade as done.
 
 ### Replacing the node instead
 

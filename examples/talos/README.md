@@ -90,7 +90,7 @@ read-only overlay populated only by system extensions; `machine.kubelet.extraArg
 cannot redirect it. So the binary must be delivered as an extension.
 
 Sidero builds and publishes the extension from a tagged release of this
-repository (`cmd/harbor-credential-provider`):
+repository:
 
 | | |
 |---|---|
@@ -101,12 +101,18 @@ repository (`cmd/harbor-credential-provider`):
 | Image Factory catalog | Talos **v1.14.0-rc.1 and later** |
 | Source | [siderolabs/extensions/container-runtime/harbor-credential-provider](https://github.com/siderolabs/extensions/tree/main/container-runtime/harbor-credential-provider) |
 
+The extension definition builds the provider command by path. Its `pkg.yaml`
+runs `go build ./cmd/credential-provider-harbor`, the path this repository used
+before the command moved to `cmd/harbor-credential-provider`, and
+`HARBOR_WIF_VERSION` in `container-runtime/vars.yaml` pins the release it
+builds from (`v0.0.1`). Bumping that pin to a tag that carries the rename has
+to change the build path in the same siderolabs/extensions change, otherwise
+the extension build fails on the first tag that contains the rename.
+
 > [!IMPORTANT]
-> **Naming.** On Talos the binary and therefore the provider `name` in the
-> kubelet config is **`harbor-credential-provider`**, not
-> `harbor-credential-provider` as in the other examples of this repository. The
-> kubelet resolves the provider binary by `name`, so a mismatch means the
-> provider is never invoked.
+> The provider `name` in the kubelet config must equal the file name the
+> extension installs, `harbor-credential-provider`. The kubelet resolves the
+> provider binary by `name`, so a mismatch means the provider is never invoked.
 
 ## Delivering the extension
 
