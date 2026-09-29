@@ -23,7 +23,9 @@ up() {
   [ "${E2E_K8S_CHANNEL}" = pinned ] && version="${E2E_PINNED_RKE2_VERSION}"
 
   log "installing rke2 (${E2E_K8S_CHANNEL})"
-  curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_VERSION="${version}" sh -
+  fetch_install_script https://get.rke2.io \
+    https://raw.githubusercontent.com/rancher/rke2/master/install.sh \
+    | sudo INSTALL_RKE2_VERSION="${version}" sh -
 
   # config.yaml, not a drop-in: the installer owns config.yaml.d/99-*, and a
   # base file here is also what a node with its own settings looks like.

@@ -57,6 +57,15 @@ retry() {
   done
 }
 
+# get.rke2.io and get.k3s.io sit behind Cloudflare, which answers a busy shared
+# CI egress IP with 429 and no Retry-After, so --retry has nothing to wait on.
+# The redirect target serves the same script, so try it before giving up.
+fetch_install_script() {
+  local script
+  script=$(curl -sfL "$1") || script=$(curl -sfL "$2")
+  printf '%s\n' "${script}"
+}
+
 # Waits for the cluster to have a Ready node. The registration wait comes first
 # because a distro can serve a kubeconfig before its node exists, and
 # `kubectl wait --all` against nothing matches nothing and returns at once.
