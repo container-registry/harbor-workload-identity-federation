@@ -15,14 +15,14 @@ MicroK8s on Kubernetes 1.34 or newer. Check with `microk8s version`. Older chann
 ## Install
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   -f examples/kubernetes/microk8s/values.yaml \
   --set registry.host=harbor.example.com \
   --set registry.audience=harbor.example.com
 
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 ## Confirm
@@ -39,7 +39,7 @@ This is the part to plan for. A snap refresh rewrites `/var/snap/microk8s/curren
 The DaemonSet does not notice. It installs once when its pod starts and then stays up, so a refresh that happens afterwards leaves it running next to a kubelet that no longer has the flags. Re-apply by restarting the pods:
 
 ```bash
-kubectl rollout restart daemonset/credential-provider-harbor -n kube-system
+kubectl rollout restart daemonset/harbor-credential-provider -n kube-system
 ```
 
 That rewrites the arguments file and restarts `kubelite`, which matters: `kubelite` reads the file once at startup, and the refresh has already restarted it with the cleaned file.
@@ -57,7 +57,7 @@ The installer stops with an error when `/var/snap/microk8s/current/args/kubelet`
 ## Uninstall
 
 ```bash
-helm uninstall credential-provider-harbor -n kube-system
+helm uninstall harbor-credential-provider -n kube-system
 ```
 
 MicroK8s keeps kubelet arguments in an args file, not a systemd drop-in, and the service is `snap.microk8s.daemon-kubelite`.
@@ -73,10 +73,10 @@ sudo "${EDITOR:-vi}" /var/snap/microk8s/common/credentialprovider/config.yaml
 
 # 3. Restart kubelite, then delete.
 sudo snap restart microk8s.daemon-kubelite
-sudo rm -f /var/snap/microk8s/common/credentialprovider/bin/credential-provider-harbor
-sudo rm -f /var/lib/credential-provider-harbor/install-marker
+sudo rm -f /var/snap/microk8s/common/credentialprovider/bin/harbor-credential-provider
+sudo rm -f /var/lib/harbor-credential-provider/install-marker
 ```
 
 Binary and config live under `common`, which survives a snap refresh, so they outlast one unless removed. The args file is under `current`, which does not: see [Snap Refreshes](#snap-refreshes).
 
-Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).
+Reference: [Uninstalling](../../../deploy/helm/harbor-credential-provider/README.md#uninstalling). A node upgraded from the old `credential-provider-harbor` naming has legacy-named leftovers as well; [Nodes upgraded from the old name](../../../deploy/helm/harbor-credential-provider/README.md#nodes-upgraded-from-the-old-name) lists them.

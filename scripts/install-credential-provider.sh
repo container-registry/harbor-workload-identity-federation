@@ -2,4 +2,4 @@
 
 set -eu
 
-exec /usr/local/bin/credential-provider-harbor-installer "$@"
+exec /usr/local/bin/harbor-credential-provider-installer "$@"

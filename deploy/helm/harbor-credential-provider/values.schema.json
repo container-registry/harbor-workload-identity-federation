@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "title": "credential-provider-harbor values",
+  "title": "harbor-credential-provider values",
   "definitions": {
     "kubeletArgumentPath": {
       "description": "Absolute host path, or empty to take the profile default. It names something inside a parent directory, so / and a trailing slash are rejected, as are whitespace, quotes, backslashes, $ and %: the path is pasted verbatim into the kubelet argument files, where systemd would read $ and % as expansions.",

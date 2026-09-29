@@ -1,6 +1,6 @@
-# credential-provider-harbor
+# harbor-credential-provider
 
-Installs the `credential-provider-harbor` kubelet plugin on every node so pods pull Harbor images with service account tokens instead of image pull secrets.
+Installs the `harbor-credential-provider` kubelet plugin on every node so pods pull Harbor images with service account tokens instead of image pull secrets.
 
 The chart runs a privileged DaemonSet. On each node it copies the credential provider binary onto the host, writes or merges the kubelet credential provider config, creates the RBAC that lets kubelets request tokens for the registry audience, points kubelet at the provider where the profile supports it, and restarts kubelet.
 
@@ -14,8 +14,8 @@ The chart runs a privileged DaemonSet. On each node it copies the credential pro
 ## Install
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   --set registry.host=harbor.example.com \
   --set profile=generic
@@ -28,7 +28,7 @@ On a cluster where a simultaneous kubelet restart on every node is not acceptabl
 Watch the rollout. Pods report ready once their node is done:
 
 ```bash
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 Then try a pull:
@@ -81,12 +81,12 @@ On `kind`, check that the live kubelet command line inside the node container ha
 | Key | Default | Description |
 |-----|---------|-------------|
 | `profile` | `generic` | See the profile table above. |
-| `credentialProvider.binaryName` | `credential-provider-harbor` | Name the binary gets on the host. |
+| `credentialProvider.binaryName` | `harbor-credential-provider` | Name the binary gets on the host. |
 | `credentialProvider.binDir` | by profile | Host directory for the binary. |
 | `credentialProvider.configPath` | by profile | Host path of the credential provider config. |
 | `credentialProvider.configFormat` | by profile | `yaml` or `json`. |
 | `installer.hostRoot` | `/host` | Where the host filesystem is mounted in the installer container. It becomes a volume `mountPath`, so `/` and a trailing slash are refused at install time. |
-| `installer.installedMarker` | `/var/lib/credential-provider-harbor/install-marker` | Host file the installer writes once a node is done, carrying the install ID the readiness probe greps for. Keep it on persistent storage: see [Readiness](#readiness). It names a file, so `/` and a trailing slash are refused at install time. |
+| `installer.installedMarker` | `/var/lib/harbor-credential-provider/install-marker` | Host file the installer writes once a node is done, carrying the install ID the readiness probe greps for. Keep it on persistent storage: see [Readiness](#readiness). It names a file, so `/` and a trailing slash are refused at install time. |
 | `installer.sleep` | `true` | Keep the pod up after installing. Leave it on: a DaemonSet restarts an exited container, and the installer would run again on every restart. |
 
 ### Kubelet
@@ -107,7 +107,7 @@ On `kind`, check that the live kubelet command line inside the node container ha
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `image.repository` | `8gears.container-registry.com/8gcr/credential-provider-harbor-deployer` | Deployer image. |
+| `image.repository` | `8gears.container-registry.com/8gcr/harbor-credential-provider-deployer` | Deployer image. |
 | `image.tag` | `v` + `Chart.appVersion` | Image tag. Releases publish the image as `vX.Y.Z`, so the default adds the prefix. Set it explicitly to run a development build from `main`. |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | Only needed if the deployer image itself is private. |
@@ -141,7 +141,7 @@ That ordering is what `kubectl rollout status` rests on. A pod is Ready only onc
 
 A node whose last completed install ID differs from the current one gets a kubelet restart even when every host file already matches, because the running kubelet has never been started against this configuration. Repeating `helm upgrade` with unchanged values changes neither the install ID nor the pod template, so it restarts nothing.
 
-That makes the marker's location load-bearing. It defaults to `/var/lib/credential-provider-harbor/install-marker` and gets its own hostPath mount, because the `installer.hostRoot` mount is the node's root filesystem without its submounts. Do not move it under `/var/run` or `/run`: those are the same tmpfs on a systemd host and are emptied at every boot. A node that loses its marker on reboot comes back with the drop-in already in effect and kubelet already started against it, but reads as never installed, so the installer restarts kubelet again and the node sits `NotReady` for the length of that restart on every single boot.
+That makes the marker's location load-bearing. It defaults to `/var/lib/harbor-credential-provider/install-marker` and gets its own hostPath mount, because the `installer.hostRoot` mount is the node's root filesystem without its submounts. Do not move it under `/var/run` or `/run`: those are the same tmpfs on a systemd host and are emptied at every boot. A node that loses its marker on reboot comes back with the drop-in already in effect and kubelet already started against it, but reads as never installed, so the installer restarts kubelet again and the node sits `NotReady` for the length of that restart on every single boot.
 
 The install ID covers the deployer image and the environment variables the installer reads. `extraEnv` entries it does not read, a proxy setting for instance, stay out of the hash, so setting one does not roll a kubelet restart across the fleet for a node install that is byte for byte the same. Entries that override a variable the installer does read, `PRESERVE_ECR_PROVIDER` among them, do change the ID, because they change what lands on the node.
 
@@ -150,7 +150,7 @@ The install ID covers the deployer image and the environment variables the insta
 An upgrade is a normal DaemonSet rolling update: one node at a time, each node Ready before the next pod starts.
 
 ```bash
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 ## First Install
@@ -162,11 +162,11 @@ kubectl rollout status daemonset/credential-provider-harbor -n kube-system
 Install without restarting, then roll the restart out as an upgrade:
 
 ```bash
-helm upgrade --install credential-provider-harbor <chart> \
+helm upgrade --install harbor-credential-provider <chart> \
   --namespace kube-system --set registry.host=harbor.example.com \
   --set kubelet.restart=false
 
-helm upgrade credential-provider-harbor <chart> \
+helm upgrade harbor-credential-provider <chart> \
   --namespace kube-system --set registry.host=harbor.example.com \
   --set kubelet.restart=true
 ```
@@ -176,19 +176,40 @@ The first command copies the binary, writes the config and the kubelet drop-in o
 Or install onto labelled batches of nodes and widen as each batch settles:
 
 ```bash
-kubectl label node node-1 node-2 credential-provider-harbor=install
-helm upgrade --install credential-provider-harbor <chart> \
+kubectl label node node-1 node-2 harbor-credential-provider=install
+helm upgrade --install harbor-credential-provider <chart> \
   --namespace kube-system --set registry.host=harbor.example.com \
-  --set nodeSelector.credential-provider-harbor=install
+  --set nodeSelector.harbor-credential-provider=install
 ```
 
 Once those nodes are Ready, label the next batch. Labelling a node creates its installer pod, which is the unbounded case again within that batch, so size the batches for what a simultaneous restart across them costs you. Drop `nodeSelector` when every node is covered.
 
+## Upgrading from credential-provider-harbor
+
+The chart, the binary, the image and the provider entry were all called `credential-provider-harbor` before. The name now reads the same way round as `ecr-credential-provider`, `acr-credential-provider` and the Talos extension, which sit beside it on a node.
+
+Keep your release name. Helm does not require it to match the chart, and reusing it makes this a rolling update of one DaemonSet:
+
+```bash
+helm upgrade credential-provider-harbor \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
+  --namespace kube-system \
+  -f values.yaml
+```
+
+Installing under the new release name instead leaves the old release in place, and the cluster ends up running two DaemonSets that both install to every node. If you want the release renamed too, `helm uninstall credential-provider-harbor` first, then install. The nodes keep their files in between, so pulls carry on working across the gap.
+
+The installer migrates each node as its pod comes up: it drops the provider entry under the old name before writing the new one, and deletes the old binary after kubelet has restarted. Both steps are skipped if you have pinned `credentialProvider.binaryName` back to `credential-provider-harbor`, which stays supported.
+
+Nothing needs doing by hand, and nothing is left behind that kubelet still calls.
+
 ## Uninstalling
 
 ```bash
-helm uninstall credential-provider-harbor -n kube-system
+helm uninstall harbor-credential-provider -n kube-system
 ```
+
+The release name is whatever you installed under. An upgrade that kept the old one, which is what [Upgrading from credential-provider-harbor](#upgrading-from-credential-provider-harbor) recommends, is still called `credential-provider-harbor`; `helm list -n kube-system` settles it.
 
 Removes the DaemonSet, the ServiceAccount and the RBAC. Touches nothing on the nodes, and is the whole job if the nodes are about to be replaced.
 
@@ -200,15 +221,15 @@ Profile defaults. `credentialProvider.binDir`, `credentialProvider.configPath` a
 
 | Profile | Binary | Credential provider config | Kubelet configuration |
 |---------|--------|----------------------------|-----------------------|
-| `generic`, `custom`, `gke` | `/usr/local/bin/credential-providers/credential-provider-harbor` | `/etc/kubernetes/credential-providers/config.yaml` | `/etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf` |
-| `eks`, `aws` | `/etc/eks/image-credential-provider/credential-provider-harbor` | `/etc/eks/image-credential-provider/config.json` | none: the AMI carries the flags, so EKS installs with `kubelet.configure=false` |
-| `k3s`, `k3d` | `/var/lib/rancher/credentialprovider/bin/credential-provider-harbor` | `/var/lib/rancher/credentialprovider/config.yaml` | `/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml` |
-| `rke2` | `/var/lib/rancher/credentialprovider/bin/credential-provider-harbor` | `/var/lib/rancher/credentialprovider/config.yaml` | `/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml` |
-| `kind` | `/var/lib/kubelet/credential-provider/credential-provider-harbor` | `/var/lib/kubelet/credential-provider-config.yaml` | `/etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf` |
-| `aks` | `/usr/local/bin/credential-providers/credential-provider-harbor` | `/etc/kubernetes/credential-providers/config.yaml` | that drop-in, plus a `KUBELET_FLAGS` edit in `/etc/default/kubelet` |
-| `microk8s` | `/var/snap/microk8s/common/credentialprovider/bin/credential-provider-harbor` | `/var/snap/microk8s/common/credentialprovider/config.yaml` | an argument in `/var/snap/microk8s/current/args/kubelet` |
+| `generic`, `custom`, `gke` | `/usr/local/bin/credential-providers/harbor-credential-provider` | `/etc/kubernetes/credential-providers/config.yaml` | `/etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf` |
+| `eks`, `aws` | `/etc/eks/image-credential-provider/harbor-credential-provider` | `/etc/eks/image-credential-provider/config.json` | none: the AMI carries the flags, so EKS installs with `kubelet.configure=false` |
+| `k3s`, `k3d` | `/var/lib/rancher/credentialprovider/bin/harbor-credential-provider` | `/var/lib/rancher/credentialprovider/config.yaml` | `/etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml` |
+| `rke2` | `/var/lib/rancher/credentialprovider/bin/harbor-credential-provider` | `/var/lib/rancher/credentialprovider/config.yaml` | `/etc/rancher/rke2/config.yaml.d/99-harbor-credential-provider.yaml` |
+| `kind` | `/var/lib/kubelet/credential-provider/harbor-credential-provider` | `/var/lib/kubelet/credential-provider-config.yaml` | `/etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf` |
+| `aks` | `/usr/local/bin/credential-providers/harbor-credential-provider` | `/etc/kubernetes/credential-providers/config.yaml` | that drop-in, plus a `KUBELET_FLAGS` edit in `/etc/default/kubelet` |
+| `microk8s` | `/var/snap/microk8s/common/credentialprovider/bin/harbor-credential-provider` | `/var/snap/microk8s/common/credentialprovider/config.yaml` | an argument in `/var/snap/microk8s/current/args/kubelet` |
 
-Kubelet configuration exists only where the install ran with `kubelet.configure=true`, the default everywhere except EKS. The marker is `/var/lib/credential-provider-harbor/install-marker` on every profile.
+Kubelet configuration exists only where the install ran with `kubelet.configure=true`, the default everywhere except EKS. The marker is `/var/lib/harbor-credential-provider/install-marker` on every profile.
 
 ### Cleaning a node
 
@@ -219,20 +240,20 @@ Kubelet reads the credential provider config at startup, so it keeps exec'ing th
 On a `generic` node, the chart's default:
 
 ```bash
-# 1. Remove the credential-provider-harbor entry from the providers list.
+# 1. Remove the harbor-credential-provider entry from the providers list.
 sudo "${EDITOR:-vi}" /etc/kubernetes/credential-providers/config.yaml
 
 # 2. Remove the kubelet drop-in and reload, so the restart comes up without
 #    the flags.
-sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf
 sudo systemctl daemon-reload
 
 # 3. Kubelet reads both only at startup.
 sudo systemctl restart kubelet
 
 # 4. Nothing calls it now.
-sudo rm -f /usr/local/bin/credential-providers/credential-provider-harbor
-sudo rm -f /var/lib/credential-provider-harbor/install-marker
+sudo rm -f /usr/local/bin/credential-providers/harbor-credential-provider
+sudo rm -f /var/lib/harbor-credential-provider/install-marker
 ```
 
 Substitute the paths for your profile from the table above. What changes by profile:
@@ -245,6 +266,26 @@ Substitute the paths for your profile from the table above. What changes by prof
 Deleting the config file outright works where the provider is its only entry. Not on EKS, where it is shared with `ecr-credential-provider`: remove that entry and the AWS add-ons stop pulling.
 
 The per-distribution pages under [`examples/kubernetes/`](../../../examples/kubernetes/) carry these steps already filled in.
+
+### Nodes upgraded from the old name
+
+The installer's migration covers the two things that would otherwise conflict: the provider entry under the old name, and the old binary. It does not remove what the old name left elsewhere, because nothing calls those and removing files a running kubelet might still reference is not something an installer should do unprompted.
+
+So on a node that was installed under `credential-provider-harbor` and upgraded, the paths to clean are the old ones as well as the ones in the table:
+
+```bash
+# The marker, on every profile.
+sudo rm -rf /var/lib/credential-provider-harbor
+
+# Wherever the old install wrote kubelet configuration, by profile:
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf   # generic, custom, gke, kind, aks
+sudo rm -f /etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml          # k3s, k3d
+sudo rm -f /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml         # rke2
+```
+
+EKS writes none of these, so there is only the marker to remove there.
+
+All of it is inert. Every one of those files points at the same binary directory and config path as its replacement, because the rename did not move them: the systemd drop-in is read before `99-harbor-credential-provider.conf` alphabetically and loses to it, and the k3s and RKE2 drop-ins hand the embedded kubelet the same two `kubelet-arg` values twice over. The old marker is only ever read by an installer running under the old name. They are leftovers to tidy, not a reason to hurry.
 
 ### Replacing the node instead
 

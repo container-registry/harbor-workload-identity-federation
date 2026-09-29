@@ -41,5 +41,5 @@ REGISTRY_PASSWORD=<secret>
 The resulting image path is:
 
 ```text
-8gears.container-registry.com/8gcr/credential-provider-harbor-deployer
+8gears.container-registry.com/8gcr/harbor-credential-provider-deployer
 ```

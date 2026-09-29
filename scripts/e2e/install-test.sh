@@ -16,7 +16,7 @@ shift || true
 
 need kubectl helm
 
-CHART_DIR="${REPO_ROOT}/deploy/helm/credential-provider-harbor"
+CHART_DIR="${REPO_ROOT}/deploy/helm/harbor-credential-provider"
 
 cleanup() {
   local rc=$?
@@ -64,7 +64,7 @@ log "waiting for the nodes"
 wait_for_nodes 5m
 
 log "installer logs"
-kubectl logs -n "${E2E_NAMESPACE}" -l "app.kubernetes.io/name=credential-provider-harbor" --tail=40 --prefix || true
+kubectl logs -n "${E2E_NAMESPACE}" -l "app.kubernetes.io/name=harbor-credential-provider" --tail=40 --prefix || true
 
 # The real assertion. verify-node-install.sh reads the live kubelet arguments
 # on every node and exits nonzero if any node is not set up, which is the

@@ -40,8 +40,8 @@ body:
       description: Which components would this feature affect?
       multiple: true
       options:
-        - credential-provider-harbor (kubelet plugin)
-        - credential-provider-harbor-installer (on-node installer)
+        - harbor-credential-provider (kubelet plugin)
+        - harbor-credential-provider-installer (on-node installer)
         - Helm chart
         - Distribution profile or example
         - Documentation

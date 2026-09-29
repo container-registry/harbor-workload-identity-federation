@@ -6,7 +6,7 @@ deploy/
 examples/
 images/
 *.md
-!cmd/credential-provider-harbor/README.md
+!cmd/harbor-credential-provider/README.md
 LICENSE
 .gitignore
 .dockerignore

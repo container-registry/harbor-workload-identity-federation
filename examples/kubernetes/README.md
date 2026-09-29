@@ -1,6 +1,6 @@
 # Kubernetes
 
-Install `credential-provider-harbor` on your nodes so pods pull Harbor images with service account tokens instead of `imagePullSecrets`.
+Install `harbor-credential-provider` on your nodes so pods pull Harbor images with service account tokens instead of `imagePullSecrets`.
 
 Pick your distribution. The pages differ because distributions disagree about where a kubelet's arguments come from, and that is the part that decides whether any of this works.
 

@@ -2,7 +2,7 @@
 #
 # kubelet is embedded in the rke2-agent process, so there is no kubelet systemd
 # unit to drop a file into. The rke2 profile writes the flags to
-# /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml under
+# /etc/rancher/rke2/config.yaml.d/99-harbor-credential-provider.yaml under
 # kubelet-arg and restarts whichever supervisor unit systemd reports this node
 # runs, rke2-agent or rke2-server. Both unit files are installed on every node,
 # so the file on disk is not the answer. See README.md.

@@ -5,14 +5,14 @@ For local testing. kind nodes are containers running systemd, so the chart's `ki
 ## Install
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   --set profile=kind \
   --set registry.host=harbor.example.com \
   --set registry.audience=harbor.example.com
 
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 Files land at `/var/lib/kubelet/credential-provider/` and `/var/lib/kubelet/credential-provider-config.yaml` inside the node container.
@@ -37,8 +37,8 @@ You want:
 If they are missing, reinstall with the kind-only override:
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   --set profile=kind \
   --set registry.host=harbor.example.com \
@@ -71,4 +71,4 @@ The cluster is disposable, so deleting it is the removal:
 kind delete cluster --name credential-provider-test
 ```
 
-Keeping the cluster: `helm uninstall credential-provider-harbor -n kube-system`, then per node container take the entry out of `/var/lib/kubelet/credential-provider-config.yaml`, delete `/etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf`, restart kubelet, then delete `/var/lib/kubelet/credential-provider/credential-provider-harbor`. Order matters, for the reason [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling) gives.
+Keeping the cluster: `helm uninstall harbor-credential-provider -n kube-system`, then per node container take the entry out of `/var/lib/kubelet/credential-provider-config.yaml`, delete `/etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf`, restart kubelet, then delete `/var/lib/kubelet/credential-provider/harbor-credential-provider`. Order matters, for the reason [Uninstalling](../../../deploy/helm/harbor-credential-provider/README.md#uninstalling) gives.

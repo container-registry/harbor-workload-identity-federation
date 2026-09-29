@@ -32,9 +32,9 @@ This repository holds the runnable parts: the kubelet credential provider, the i
 
 ---
 
-## credential-provider-harbor
+## harbor-credential-provider
 
-`credential-provider-harbor` is a Kubernetes kubelet credential provider plugin (KEP-4412) that uses Service Account tokens directly as Harbor registry passwords via Federated Robot Accounts.
+`harbor-credential-provider` is a Kubernetes kubelet credential provider plugin (KEP-4412) that uses Service Account tokens directly as Harbor registry passwords via Federated Robot Accounts.
 
 The kubelet calls this binary via stdin/stdout protocol: it receives a `CredentialProviderRequest` containing a service account token and returns a `CredentialProviderResponse` with Basic Auth credentials (`jwt:<SA-token>`).
 
@@ -47,7 +47,7 @@ Set these values first:
 ```bash
 export REGISTRY_ADDRESS=8gears.container-registry.com
 export PROJECT_NAME=8gcr
-export INSTALLER_IMAGE="${REGISTRY_ADDRESS}/${PROJECT_NAME}/credential-provider-harbor-deployer"
+export INSTALLER_IMAGE="${REGISTRY_ADDRESS}/${PROJECT_NAME}/harbor-credential-provider-deployer"
 
 # Harbor registry that workloads pull from.
 export HARBOR_REGISTRY=harbor.example.com
@@ -59,8 +59,8 @@ export HARBOR_AUDIENCE=https://harbor.example.com
 Install from a local checkout:
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set image.repository="${INSTALLER_IMAGE}" \
@@ -71,8 +71,8 @@ helm upgrade --install credential-provider-harbor \
 Install a released OCI chart:
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  "oci://${REGISTRY_ADDRESS}/${PROJECT_NAME}/credential-provider-harbor" \
+helm upgrade --install harbor-credential-provider \
+  "oci://${REGISTRY_ADDRESS}/${PROJECT_NAME}/harbor-credential-provider" \
   --namespace kube-system \
   --create-namespace \
   --set image.repository="${INSTALLER_IMAGE}" \
@@ -83,7 +83,7 @@ helm upgrade --install credential-provider-harbor \
 Pods go ready once their node is set up and kubelet has restarted, which it does by default (`kubelet.restart=true`). So the rollout tells you when the cluster is done:
 
 ```bash
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 Select a platform profile when the default generic kubelet paths are not right for your cluster:
@@ -104,8 +104,8 @@ Examples:
 
 ```bash
 # Generic kubeadm/systemd nodes.
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set profile=generic \
@@ -114,8 +114,8 @@ helm upgrade --install credential-provider-harbor \
   --set registry.audience="${HARBOR_AUDIENCE}"
 
 # EKS AL2023. Preserves the existing ECR credential provider entry.
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set profile=eks \
@@ -124,8 +124,8 @@ helm upgrade --install credential-provider-harbor \
   --set registry.audience="${HARBOR_AUDIENCE}"
 
 # k3s/k3d.
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set profile=k3s \
@@ -134,8 +134,8 @@ helm upgrade --install credential-provider-harbor \
   --set registry.audience="${HARBOR_AUDIENCE}"
 
 # kind.
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set profile=kind \
@@ -144,8 +144,8 @@ helm upgrade --install credential-provider-harbor \
   --set registry.audience="${HARBOR_AUDIENCE}"
 
 # kind fallback. Enable only if the live kubelet command line is missing the provider flags.
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set profile=kind \
@@ -157,8 +157,8 @@ helm upgrade --install credential-provider-harbor \
 # GKE Standard best effort. GKE Autopilot is unsupported. On Container-Optimized
 # OS nodes use profile=custom instead: /usr is noexec there, so the binary
 # cannot go in the usual place. examples/kubernetes/gke/ covers both node images.
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set profile=gke \
@@ -167,8 +167,8 @@ helm upgrade --install credential-provider-harbor \
   --set registry.audience="${HARBOR_AUDIENCE}"
 
 # Custom host paths.
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set profile=custom \
@@ -179,8 +179,8 @@ helm upgrade --install credential-provider-harbor \
   --set registry.audience="${HARBOR_AUDIENCE}"
 
 # Install files but do not restart kubelet.
-helm upgrade --install credential-provider-harbor \
-  deploy/helm/credential-provider-harbor/ \
+helm upgrade --install harbor-credential-provider \
+  deploy/helm/harbor-credential-provider/ \
   --namespace kube-system \
   --create-namespace \
   --set image.repository="${INSTALLER_IMAGE}" \
@@ -199,14 +199,14 @@ Download the binary from [GitHub Releases](https://github.com/container-registry
 
 ```bash
 # Download the binary (choose your architecture)
-curl -Lo credential-provider-harbor \
-  https://github.com/container-registry/harbor-workload-identity-federation/releases/latest/download/credential-provider-harbor-linux-amd64
+curl -Lo harbor-credential-provider \
+  https://github.com/container-registry/harbor-workload-identity-federation/releases/latest/download/harbor-credential-provider-linux-amd64
 
-chmod +x credential-provider-harbor
+chmod +x harbor-credential-provider
 
 # Place it in the credential provider directory
 sudo mkdir -p /usr/local/bin/credential-providers
-sudo mv credential-provider-harbor /usr/local/bin/credential-providers/
+sudo mv harbor-credential-provider /usr/local/bin/credential-providers/
 ```
 
 Create the credential provider config:
@@ -216,7 +216,7 @@ Create the credential provider config:
 kind: CredentialProviderConfig
 apiVersion: kubelet.config.k8s.io/v1
 providers:
-- name: credential-provider-harbor
+- name: harbor-credential-provider
   apiVersion: credentialprovider.kubelet.k8s.io/v1
   tokenAttributes:
     requireServiceAccount: true
@@ -236,9 +236,9 @@ Configure kubelet flags:
 --image-credential-provider-config=/etc/kubernetes/credential-providers/config.yaml
 ```
 
-The [chart README](deploy/helm/credential-provider-harbor/README.md) covers the values you are likely to change; [`values.yaml`](deploy/helm/credential-provider-harbor/values.yaml) is the full list. `values.schema.json` catches the usual mistakes when you run `helm install`, rather than leaving you to find them on a node: no `registry.host`, an unknown profile, `profile=custom` with no paths set, a relative host path, a bad cache duration, a marker file on tmpfs, a path with characters the kubelet argument files cannot hold, and a `securityContext` that takes away privileges the installer needs.
+The [chart README](deploy/helm/harbor-credential-provider/README.md) covers the values you are likely to change; [`values.yaml`](deploy/helm/harbor-credential-provider/values.yaml) is the full list. `values.schema.json` catches the usual mistakes when you run `helm install`, rather than leaving you to find them on a node: no `registry.host`, an unknown profile, `profile=custom` with no paths set, a relative host path, a bad cache duration, a marker file on tmpfs, a path with characters the kubelet argument files cannot hold, and a `securityContext` that takes away privileges the installer needs.
 
-`helm uninstall` removes the DaemonSet, the ServiceAccount and the RBAC. It does not clean the nodes. The binary, the config, the kubelet drop-in and the marker file stay where the installer put them, and kubelet goes on calling the provider. [Uninstalling](deploy/helm/credential-provider-harbor/README.md#uninstalling) lists what to delete to put a node back.
+`helm uninstall` removes the DaemonSet, the ServiceAccount and the RBAC. It does not clean the nodes. The binary, the config, the kubelet drop-in and the marker file stay where the installer put them, and kubelet goes on calling the provider. [Uninstalling](deploy/helm/harbor-credential-provider/README.md#uninstalling) lists what to delete to put a node back.
 
 ### Building from Source
 
@@ -280,8 +280,8 @@ Each train publishes only its own artifacts, so with the defaults:
 
 ```text
 a vX.Y.Z release        binaries for linux/amd64 and linux/arm64 on the GitHub Release
-                        8gears.container-registry.com/8gcr/credential-provider-harbor-deployer:vX.Y.Z
-a chart-vX.Y.Z release  oci://8gears.container-registry.com/8gcr/credential-provider-harbor:X.Y.Z
+                        8gears.container-registry.com/8gcr/harbor-credential-provider-deployer:vX.Y.Z
+a chart-vX.Y.Z release  oci://8gears.container-registry.com/8gcr/harbor-credential-provider:X.Y.Z
 ```
 
 ---
@@ -627,7 +627,7 @@ In Kubernetes 1.34+, the kubelet can automatically request Service Account token
 - Docker installed
 - k3d installed (`brew install k3d` or see [k3d.io](https://k3d.io))
 - kubectl installed
-- The `credential-provider-harbor` binary for your architecture (linux-amd64 or linux-arm64)
+- The `harbor-credential-provider` binary for your architecture (linux-amd64 or linux-arm64)
 
 ### Quick Start
 
@@ -667,7 +667,7 @@ agents: 0
 image: rancher/k3s:v1.34.2-k3s1
 volumes:
   # Mount the credential provider binary to k3s default path
-  - volume: /path/to/credential-provider-harbor:/var/lib/rancher/credentialprovider/bin/credential-provider-harbor
+  - volume: /path/to/harbor-credential-provider:/var/lib/rancher/credentialprovider/bin/harbor-credential-provider
     nodeFilters:
       - all
   # Mount the credential provider config to k3s default path
@@ -692,7 +692,7 @@ For kind clusters, also verify kubelet is started with the credential provider f
 kind: CredentialProviderConfig
 apiVersion: kubelet.config.k8s.io/v1
 providers:
-  - name: credential-provider-harbor
+  - name: harbor-credential-provider
     apiVersion: credentialprovider.kubelet.k8s.io/v1
     tokenAttributes:
       requireServiceAccount: true

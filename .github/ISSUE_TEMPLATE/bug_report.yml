@@ -62,8 +62,8 @@ body:
       label: Component
       description: Which part is misbehaving?
       options:
-        - credential-provider-harbor (kubelet plugin)
-        - credential-provider-harbor-installer (on-node installer)
+        - harbor-credential-provider (kubelet plugin)
+        - harbor-credential-provider-installer (on-node installer)
         - Helm chart
         - Examples or scripts
         - Documentation
@@ -120,7 +120,7 @@ body:
     attributes:
       label: Relevant Logs
       description: |
-        Installer pod logs (`kubectl logs -n kube-system -l app.kubernetes.io/name=credential-provider-harbor`,
+        Installer pod logs (`kubectl logs -n kube-system -l app.kubernetes.io/name=harbor-credential-provider`,
         with your release namespace if it is not kube-system),
         kubelet logs around the failed pull (`journalctl -u kubelet`), and the credential
         provider config written on the node. Redact tokens before pasting.

@@ -22,7 +22,7 @@ func TestConfigureRKE2WritesTheKubeletArgDropIn(t *testing.T) {
 
 	requireIdempotentConfigureKubelet(t, opts)
 
-	dropIn := filepath.Join(tmpDir, "etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml")
+	dropIn := filepath.Join(tmpDir, "etc/rancher/rke2/config.yaml.d/99-harbor-credential-provider.yaml")
 	data, err := os.ReadFile(dropIn)
 	if err != nil {
 		t.Fatalf("read drop-in: %v", err)

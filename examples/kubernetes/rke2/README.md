@@ -2,7 +2,7 @@
 
 One `helm install`, on server and worker nodes alike.
 
-RKE2 runs kubelet inside the `rke2-agent` process rather than as its own systemd unit, so there is no `kubelet.service` to drop a file into. The `rke2` profile writes `/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml` instead, which is where RKE2 reads `kubelet-arg` from, and restarts the supervisor so it takes effect. [`config.yaml`](config.yaml) shows the file it writes.
+RKE2 runs kubelet inside the `rke2-agent` process rather than as its own systemd unit, so there is no `kubelet.service` to drop a file into. The `rke2` profile writes `/etc/rancher/rke2/config.yaml.d/99-harbor-credential-provider.yaml` instead, which is where RKE2 reads `kubelet-arg` from, and restarts the supervisor so it takes effect. [`config.yaml`](config.yaml) shows the file it writes.
 
 ## Audience
 
@@ -11,28 +11,28 @@ kubelet asks the API server for a token whose audience is `registry.audience`. W
 ## Install
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   -f examples/kubernetes/rke2/values.yaml \
   --set registry.host=harbor.example.com \
   --set registry.audience=harbor.example.com
 
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 The installer restarts the supervisor the node runs, asking systemd which of `rke2-server` and `rke2-agent` is active or enabled. It cannot go by the unit files: the tarball ships both and `install.sh` moves both into place, so `rke2-server.service` sits on a plain worker too, and restarting everything installed would start a control plane there. Override the choice with `--set kubelet.serviceName=...` if your nodes name the unit differently. A node where systemd runs neither fails the install with that instruction rather than guessing.
 
 ## If You Already Set `kubelet-arg` Yourself
 
-Read this one before installing. RKE2 reads `/etc/rancher/rke2/config.yaml` first and then `config.yaml.d/*.yaml` in alphabetical order, and for a repeated key the last file wins outright. It does not merge the two lists. So the installer's `99-credential-provider-harbor.yaml` sorts last, the credential provider flags do apply, and **any `kubelet-arg` entries of your own are replaced by them.**
+Read this one before installing. RKE2 reads `/etc/rancher/rke2/config.yaml` first and then `config.yaml.d/*.yaml` in alphabetical order, and for a repeated key the last file wins outright. It does not merge the two lists. So the installer's `99-harbor-credential-provider.yaml` sorts last, the credential provider flags do apply, and **any `kubelet-arg` entries of your own are replaced by them.**
 
 If you have none, there is nothing to do.
 
 If you have some, the thing that does not work is putting them in a drop-in that sorts after `99-`. Under the same rule, that file replaces the installer's list and takes the two provider flags out with it, silently. Two ways round it, and they are not equally good:
 
 - **`kubelet-arg+:` in the later file.** It appends to the earlier value rather than replacing it, so the installer keeps owning the two provider entries. Prefer this one.
-- **Both sets of entries listed together under `kubelet-arg:` in the later file.** This works, and it takes the provider flags out of the installer's hands. `99-credential-provider-harbor.yaml` is rewritten with the current `credentialProvider.binDir` on every run, but your later file still wins, so a reinstall with a different path leaves the cluster on the old one with no error. If you go this way, keep the copies in step.
+- **Both sets of entries listed together under `kubelet-arg:` in the later file.** This works, and it takes the provider flags out of the installer's hands. `99-harbor-credential-provider.yaml` is rewritten with the current `credentialProvider.binDir` on every run, but your later file still wins, so a reinstall with a different path leaves the cluster on the old one with no error. If you go this way, keep the copies in step.
 
 The third option is to keep the installer out of the kubelet arguments entirely:
 
@@ -63,7 +63,7 @@ grep -r image-credential-provider /etc/rancher/rke2/
 ## Uninstall
 
 ```bash
-helm uninstall credential-provider-harbor -n kube-system
+helm uninstall harbor-credential-provider -n kube-system
 ```
 
 Both unit files exist on every node, so go by which one systemd has active, not by which files are present.
@@ -72,7 +72,7 @@ Entry out, restart, then delete. Kubelet reads the config at startup, so it keep
 
 ```bash
 # 1. Remove the drop-in.
-sudo rm -f /etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml
+sudo rm -f /etc/rancher/rke2/config.yaml.d/99-harbor-credential-provider.yaml
 
 # 2. Take the entry out of the providers list.
 sudo "${EDITOR:-vi}" /var/lib/rancher/credentialprovider/config.yaml
@@ -80,10 +80,10 @@ sudo "${EDITOR:-vi}" /var/lib/rancher/credentialprovider/config.yaml
 # 3. Restart the unit this node runs, then delete.
 systemctl is-active rke2-server rke2-agent
 sudo systemctl restart rke2-server    # or rke2-agent
-sudo rm -f /var/lib/rancher/credentialprovider/bin/credential-provider-harbor
-sudo rm -f /var/lib/credential-provider-harbor/install-marker
+sudo rm -f /var/lib/rancher/credentialprovider/bin/harbor-credential-provider
+sudo rm -f /var/lib/harbor-credential-provider/install-marker
 ```
 
 If you set `kubelet-arg` yourself instead of letting the chart write the drop-in, undo that edit.
 
-Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).
+Reference: [Uninstalling](../../../deploy/helm/harbor-credential-provider/README.md#uninstalling). A node upgraded from the old `credential-provider-harbor` naming has legacy-named leftovers as well; [Nodes upgraded from the old name](../../../deploy/helm/harbor-credential-provider/README.md#nodes-upgraded-from-the-old-name) lists them.

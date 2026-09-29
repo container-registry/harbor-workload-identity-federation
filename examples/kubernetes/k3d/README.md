@@ -9,7 +9,7 @@ k3d runs k3s in Docker. The chart's `k3d` profile is the same as [`k3s`](../k3s/
 Drop the `volumes` block unless you have a reason to keep it, and let the chart install the binary. If you do keep it, build the binary first and point the mount at it, because Docker silently creates an empty directory for a bind-mount source that does not exist, and the provider then fails with nothing useful in the logs:
 
 ```bash
-task build-all   # writes bin/credential-provider-harbor-linux-amd64 and -linux-arm64
+task build-all   # writes bin/harbor-credential-provider-linux-amd64 and -linux-arm64
 ```
 
 Mount the artifact that matches the k3d node's architecture, which is your machine's: `linux-arm64` on an Apple Silicon or other arm64 laptop, `linux-amd64` on an x86_64 one. A node given the wrong one cannot execute it, and the pull fails with `exec format error`.
@@ -24,14 +24,14 @@ The cluster needs nothing else at creation time for the audience. What lets kube
 ## Install
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   --set profile=k3d \
   --set registry.host=harbor.example.com \
   --set registry.audience=harbor.example.com
 
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 ## Test
@@ -60,4 +60,4 @@ The cluster is disposable, so deleting it is the removal. The nodes were contain
 k3d cluster delete credential-provider-test
 ```
 
-Keeping the cluster: the k3s steps apply unchanged, and [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling) has the paths and the order.
+Keeping the cluster: the k3s steps apply unchanged, and [Uninstalling](../../../deploy/helm/harbor-credential-provider/README.md#uninstalling) has the paths and the order.

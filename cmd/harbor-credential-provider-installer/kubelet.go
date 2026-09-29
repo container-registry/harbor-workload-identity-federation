@@ -93,7 +93,7 @@ func systemdDropInPath(opts options) string {
 	if service == "" {
 		service = "kubelet"
 	}
-	return filepath.Join("/etc/systemd/system", service+".service.d", "99-credential-provider-harbor.conf")
+	return filepath.Join("/etc/systemd/system", service+".service.d", "99-harbor-credential-provider.conf")
 }
 
 func configureSystemdKubelet(opts options) (bool, error) {
@@ -177,7 +177,7 @@ ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELE
 func configureK3s(opts options) (bool, error) {
 	dropInPath := opts.K3sConfigDropInPath
 	if dropInPath == "" {
-		dropInPath = "/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml"
+		dropInPath = "/etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml"
 	}
 
 	return writeHostFile(opts, hostFile{
@@ -193,7 +193,7 @@ image-credential-provider-config: %q
 func configureRKE2(opts options) (bool, error) {
 	dropInPath := opts.RKE2ConfigDropInPath
 	if dropInPath == "" {
-		dropInPath = "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml"
+		dropInPath = "/etc/rancher/rke2/config.yaml.d/99-harbor-credential-provider.yaml"
 	}
 
 	// RKE2 has no flags of its own for these, unlike k3s. They reach the

@@ -20,7 +20,7 @@ func TestConfigureK3sWritesTheConfigDropIn(t *testing.T) {
 
 	requireIdempotentConfigureKubelet(t, opts)
 
-	dropIn := filepath.Join(tmpDir, "etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml")
+	dropIn := filepath.Join(tmpDir, "etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml")
 	data, err := os.ReadFile(dropIn)
 	if err != nil {
 		t.Fatalf("read drop-in: %v", err)

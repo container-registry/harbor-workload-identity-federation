@@ -82,7 +82,7 @@ func TestConfigureKindSystemdKubeletWritesExecStartOverride(t *testing.T) {
 
 	requireIdempotentConfigureKubelet(t, opts)
 
-	dropIn := filepath.Join(tmpDir, "etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf")
+	dropIn := filepath.Join(tmpDir, "etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf")
 	data, err := os.ReadFile(dropIn)
 	if err != nil {
 		t.Fatalf("read drop-in: %v", err)
@@ -119,7 +119,7 @@ func TestConfigureKubeletKindDefaultsToExtraArgsDropIn(t *testing.T) {
 		t.Fatal("configureKubelet() changed = false, want true")
 	}
 
-	dropIn := filepath.Join(tmpDir, "etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf")
+	dropIn := filepath.Join(tmpDir, "etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf")
 	data, err := os.ReadFile(dropIn)
 	if err != nil {
 		t.Fatalf("read drop-in: %v", err)
@@ -208,7 +208,7 @@ func TestOptionsDefaultToNodeModificationAndRestart(t *testing.T) {
 func validOptions() options {
 	return options{
 		HostRoot:        "/host",
-		SourceBinary:    "/usr/local/bin/credential-provider-harbor",
+		SourceBinary:    "/usr/local/bin/harbor-credential-provider",
 		BinaryName:      providerName,
 		BinDir:          "/usr/local/bin/credential-providers",
 		ConfigPath:      "/etc/kubernetes/credential-providers/config.yaml",
@@ -307,7 +307,7 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 			configPath: "/var/lib/rancher/credentialprovider/config.yaml",
 			// Left empty on purpose: systemd decides, see detectRKE2Services.
 			kubeletService: "",
-			rke2DropIn:     "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml",
+			rke2DropIn:     "/etc/rancher/rke2/config.yaml.d/99-harbor-credential-provider.yaml",
 		},
 		{
 			profile:          "microk8s",
@@ -321,7 +321,7 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 			binDir:         "/var/lib/rancher/credentialprovider/bin",
 			configPath:     "/var/lib/rancher/credentialprovider/config.yaml",
 			kubeletService: "k3s",
-			k3sDropIn:      "/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml",
+			k3sDropIn:      "/etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml",
 		},
 	}
 
@@ -374,7 +374,7 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 func markerOptions(t *testing.T, hostRoot, installID string) options {
 	t.Helper()
 
-	source := filepath.Join(t.TempDir(), "credential-provider-harbor")
+	source := filepath.Join(t.TempDir(), "harbor-credential-provider")
 	if err := os.WriteFile(source, []byte("binary"), 0755); err != nil {
 		t.Fatalf("write source binary: %v", err)
 	}
@@ -573,7 +573,7 @@ func TestRebootDoesNotRepeatTheKubeletRestart(t *testing.T) {
 		},
 		{
 			name:               "marker on tmpfs, as the old default was",
-			marker:             "/var/run/credential-provider-harbor-installed",
+			marker:             "/var/run/harbor-credential-provider-installed",
 			wantRestartOnBoot:  true,
 			wantIDAfterAReboot: "",
 		},
@@ -856,7 +856,7 @@ func TestValidateOptionsRejectsPathsThatNameADirectory(t *testing.T) {
 	}
 
 	for name, set := range fields {
-		for _, path := range []string{"/", "/var/lib/credential-provider-harbor/"} {
+		for _, path := range []string{"/", "/var/lib/harbor-credential-provider/"} {
 			t.Run(name+" "+path, func(t *testing.T) {
 				opts := base
 				set(&opts, path)
@@ -918,13 +918,13 @@ func TestInstallRejectsARootMarkerBeforeTouchingTheHost(t *testing.T) {
 func TestValidateOptionsRejectsPathsThatBreakTheFilesTheyGoInto(t *testing.T) {
 	base := options{
 		HostRoot:        "/host",
-		SourceBinary:    "/usr/local/bin/credential-provider-harbor",
+		SourceBinary:    "/usr/local/bin/harbor-credential-provider",
 		BinaryName:      providerName,
 		BinDir:          "/usr/local/bin/credential-providers",
 		ConfigPath:      "/etc/kubernetes/credential-providers/config.yaml",
 		ConfigFormat:    "yaml",
 		MatchImages:     []string{"harbor.example.com"},
-		InstalledMarker: "/var/run/credential-provider-harbor-installed",
+		InstalledMarker: "/var/run/harbor-credential-provider-installed",
 		InstallID:       standaloneInstallID,
 	}
 
@@ -967,5 +967,279 @@ func TestValidateOptionsRejectsPathsThatBreakTheFilesTheyGoInto(t *testing.T) {
 				t.Fatalf("validateOptions() on ConfigPath %q returned nil error, want an unsafe path error", tt.path)
 			}
 		})
+	}
+}
+
+// A node installed under the old name has an entry keyed by that name. Providers
+// are keyed by name, so without the migration mergeProvider would keep it beside
+// the new one and leave two providers matching the same images.
+func TestInstallCredentialProviderConfigDropsLegacyEntry(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	existing := credentialProviderConfig{
+		APIVersion: configAPIVersion,
+		Kind:       "CredentialProviderConfig",
+		Providers: []credentialProvider{
+			{Name: legacyBinaryName, APIVersion: providerAPIVersion, MatchImages: []string{"harbor.example.com"}, DefaultCacheDuration: "1h"},
+			{Name: "ecr-credential-provider", APIVersion: providerAPIVersion, MatchImages: []string{"public.ecr.aws"}, DefaultCacheDuration: "12h0m0s"},
+		},
+	}
+	data, err := json.Marshal(existing)
+	if err != nil {
+		t.Fatalf("marshal existing config: %v", err)
+	}
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		t.Fatalf("write existing config: %v", err)
+	}
+
+	opts := options{
+		HostRoot:            "/",
+		BinaryName:          providerName,
+		ConfigPath:          configPath,
+		ConfigFormat:        "json",
+		RegistryAudience:    "harbor.example.com",
+		RegistryUsername:    "jwt",
+		MatchImages:         []string{"harbor.example.com"},
+		CacheDuration:       "1h",
+		PreserveECRProvider: true,
+	}
+	if _, err := installCredentialProviderConfig(opts); err != nil {
+		t.Fatalf("installCredentialProviderConfig() error: %v", err)
+	}
+
+	cfg, err := readCredentialProviderConfig(configPath, "json")
+	if err != nil {
+		t.Fatalf("readCredentialProviderConfig() error: %v", err)
+	}
+	for _, p := range cfg.Providers {
+		if p.Name == legacyBinaryName {
+			t.Fatalf("provider %q still present after install", legacyBinaryName)
+		}
+	}
+	if !hasProvider(cfg, providerName) {
+		t.Fatalf("provider %q missing after install", providerName)
+	}
+	if !hasProvider(cfg, "ecr-credential-provider") {
+		t.Fatal("ecr-credential-provider was dropped")
+	}
+}
+
+// Pinning BinaryName back to the old name is a supported choice, so the
+// migration must leave that install alone.
+//
+// The written config cannot show this on its own: unguarded, removeProvider
+// strips the legacy entry and mergeProvider immediately puts one back under the
+// same name, so the file ends up identical either way. What the guard actually
+// prevents is the installer reporting that it removed the entry this install is
+// using, so that is what this asserts.
+func TestInstallCredentialProviderConfigKeepsLegacyEntryWhenPinned(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	// The node this is about already carries the legacy entry.
+	existing := credentialProviderConfig{
+		APIVersion: configAPIVersion,
+		Kind:       "CredentialProviderConfig",
+		Providers: []credentialProvider{
+			{Name: legacyBinaryName, APIVersion: providerAPIVersion, MatchImages: []string{"harbor.example.com"}, DefaultCacheDuration: "1h"},
+		},
+	}
+	data, err := json.Marshal(existing)
+	if err != nil {
+		t.Fatalf("marshal existing config: %v", err)
+	}
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		t.Fatalf("write existing config: %v", err)
+	}
+
+	opts := options{
+		HostRoot:         "/",
+		BinaryName:       legacyBinaryName,
+		ConfigPath:       configPath,
+		ConfigFormat:     "json",
+		RegistryAudience: "harbor.example.com",
+		RegistryUsername: "jwt",
+		MatchImages:      []string{"harbor.example.com"},
+		CacheDuration:    "1h",
+	}
+
+	out := captureStdout(t, func() {
+		if _, err := installCredentialProviderConfig(opts); err != nil {
+			t.Fatalf("installCredentialProviderConfig() error: %v", err)
+		}
+	})
+
+	if strings.Contains(out, "Removed legacy") {
+		t.Fatalf("installer reported removing the entry it is pinned to:\n%s", out)
+	}
+
+	cfg, err := readCredentialProviderConfig(configPath, "json")
+	if err != nil {
+		t.Fatalf("readCredentialProviderConfig() error: %v", err)
+	}
+	if !hasProvider(cfg, legacyBinaryName) {
+		t.Fatalf("pinned provider %q was removed", legacyBinaryName)
+	}
+	if n := countProviders(cfg, legacyBinaryName); n != 1 {
+		t.Fatalf("pinned provider appears %d times, want 1", n)
+	}
+}
+
+// captureStdout runs fn with os.Stdout redirected and returns what it printed.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	saved := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = saved }()
+
+	// Drained while fn runs, not after. A pipe holds about 64 KiB, and a
+	// writer that fills it blocks until someone reads: reading afterwards
+	// would deadlock the test rather than fail it.
+	type captured struct {
+		text string
+		err  error
+	}
+	out := make(chan captured, 1)
+	go func() {
+		var buf bytes.Buffer
+		if _, err := buf.ReadFrom(r); err != nil {
+			out <- captured{err: err}
+			return
+		}
+		out <- captured{text: buf.String()}
+	}()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("close pipe writer: %v", err)
+	}
+	got := <-out
+	if got.err != nil {
+		t.Fatalf("read captured output: %v", got.err)
+	}
+	return got.text
+}
+
+func countProviders(cfg credentialProviderConfig, name string) int {
+	n := 0
+	for _, p := range cfg.Providers {
+		if p.Name == name {
+			n++
+		}
+	}
+	return n
+}
+
+func TestRemoveLegacyBinary(t *testing.T) {
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	legacy := filepath.Join(binDir, legacyBinaryName)
+	if err := os.WriteFile(legacy, []byte("old"), 0755); err != nil {
+		t.Fatalf("write legacy binary: %v", err)
+	}
+
+	opts := options{HostRoot: "/", BinDir: binDir, BinaryName: providerName}
+	if err := removeLegacyBinary(opts); err != nil {
+		t.Fatalf("removeLegacyBinary() error: %v", err)
+	}
+	if _, err := os.Stat(legacy); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy binary still present: %v", err)
+	}
+
+	// A node that never carried it is the common case, not an error.
+	if err := removeLegacyBinary(opts); err != nil {
+		t.Fatalf("removeLegacyBinary() on a clean node: %v", err)
+	}
+
+	// Pinned back to the old name: that binary is the live one, leave it.
+	if err := os.WriteFile(legacy, []byte("pinned"), 0755); err != nil {
+		t.Fatalf("write pinned binary: %v", err)
+	}
+	pinned := options{HostRoot: "/", BinDir: binDir, BinaryName: legacyBinaryName}
+	if err := removeLegacyBinary(pinned); err != nil {
+		t.Fatalf("removeLegacyBinary() pinned: %v", err)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatalf("pinned binary was removed: %v", err)
+	}
+}
+
+func hasProvider(cfg credentialProviderConfig, name string) bool {
+	for _, p := range cfg.Providers {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// A staged rollout installs with kubelet.restart=false and restarts later. The
+// config written now no longer names the legacy provider, but the kubelet still
+// running does, so its binary has to stay until that kubelet is replaced.
+func TestInstallKeepsTheLegacyBinaryUntilKubeletRestarts(t *testing.T) {
+	hostRoot := t.TempDir()
+	opts := markerOptions(t, hostRoot, "new-revision")
+	opts.RestartKubelet = false
+
+	legacy := filepath.Join(hostRoot, opts.BinDir, legacyBinaryName)
+	if err := os.MkdirAll(filepath.Dir(legacy), 0755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	if err := os.WriteFile(legacy, []byte("old"), 0755); err != nil {
+		t.Fatalf("write legacy binary: %v", err)
+	}
+
+	// install() always calls the seam; the real restartKubelet is what decides
+	// to do nothing when RestartKubelet is false. So a call here is expected,
+	// and it is the *absence of an actual restart* that has to keep the binary.
+	if err := install(opts, func(options) error { return nil }); err != nil {
+		t.Fatalf("install() error: %v", err)
+	}
+
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatalf("legacy binary removed before any kubelet restart: %v", err)
+	}
+}
+
+// Once kubelet has restarted against a config that no longer names it, the
+// binary is no longer reachable and goes.
+func TestInstallRemovesTheLegacyBinaryAfterKubeletRestarts(t *testing.T) {
+	hostRoot := t.TempDir()
+	opts := markerOptions(t, hostRoot, "new-revision")
+	opts.RestartKubelet = true
+
+	legacy := filepath.Join(hostRoot, opts.BinDir, legacyBinaryName)
+	if err := os.MkdirAll(filepath.Dir(legacy), 0755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	if err := os.WriteFile(legacy, []byte("old"), 0755); err != nil {
+		t.Fatalf("write legacy binary: %v", err)
+	}
+
+	restarted := false
+	if err := install(opts, func(options) error {
+		restarted = true
+		// Still present while kubelet is coming back up.
+		if _, err := os.Stat(legacy); err != nil {
+			t.Fatalf("legacy binary removed before the restart returned: %v", err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("install() error: %v", err)
+	}
+	if !restarted {
+		t.Fatal("restart was never called")
+	}
+	if _, err := os.Stat(legacy); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy binary still present after the restart: %v", err)
 	}
 }
