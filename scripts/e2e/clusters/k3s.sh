@@ -24,7 +24,8 @@ up() {
 
   log "installing k3s (${E2E_K8S_CHANNEL})"
   # An empty INSTALL_K3S_VERSION is what the install script reads as "latest".
-  curl -sfL https://get.k3s.io \
+  fetch_install_script https://get.k3s.io \
+    https://raw.githubusercontent.com/k3s-io/k3s/master/install.sh \
     | sudo INSTALL_K3S_VERSION="${version}" sh -s - --write-kubeconfig-mode 644
 
   retry 30 5 test -r /etc/rancher/k3s/k3s.yaml
