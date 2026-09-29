@@ -13,14 +13,14 @@ Read the "What GKE Undoes" section before rolling this out to anything you care 
 
 ```bash
 # Ubuntu node pools
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system -f examples/kubernetes/gke/values.yaml \
   --set registry.host=harbor.example.com --set registry.audience=harbor.example.com
 
 # COS node pools
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system -f examples/kubernetes/gke/cos-values.yaml \
   --set registry.host=harbor.example.com --set registry.audience=harbor.example.com
 ```
@@ -36,11 +36,11 @@ kubectl get nodes -L cloud.google.com/gke-os-distribution
 The two commands above still install the *same* release, so running both just upgrades the first. A cluster with both node images needs two releases with different names:
 
 ```bash
-helm upgrade --install cph-ubuntu oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install cph-ubuntu oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system -f examples/kubernetes/gke/values.yaml \
   --set registry.host=harbor.example.com --set registry.audience=harbor.example.com
 
-helm upgrade --install cph-cos oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install cph-cos oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system -f examples/kubernetes/gke/cos-values.yaml \
   --set registry.host=harbor.example.com --set registry.audience=harbor.example.com
 ```
@@ -74,7 +74,7 @@ On COS, expect `--image-credential-provider-bin-dir=/home/kubernetes/bin/credent
 ## Uninstall
 
 ```bash
-helm uninstall credential-provider-harbor -n kube-system
+helm uninstall harbor-credential-provider -n kube-system
 ```
 
 GKE already undoes the node half on every node recreate, as [What GKE Undoes](#what-gke-undoes) describes. Recreating the pool is the cleanest removal here and needs no per-node work.
@@ -88,14 +88,14 @@ Entry out, restart, then delete. Kubelet reads the config at startup, so it keep
 sudo "${EDITOR:-vi}" /etc/kubernetes/credential-providers/config.yaml
 
 # 2. Remove the drop-in.
-sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf
 sudo systemctl daemon-reload
 
 # 3. Restart, then delete.
 sudo systemctl restart kubelet
-sudo rm -f /var/lib/credential-provider-harbor/install-marker
-sudo rm -f /usr/local/bin/credential-providers/credential-provider-harbor      # Ubuntu, profile: generic
-sudo rm -f /home/kubernetes/bin/credential-providers/credential-provider-harbor # COS, profile: custom
+sudo rm -f /var/lib/harbor-credential-provider/install-marker
+sudo rm -f /usr/local/bin/credential-providers/harbor-credential-provider      # Ubuntu, profile: generic
+sudo rm -f /home/kubernetes/bin/credential-providers/harbor-credential-provider # COS, profile: custom
 ```
 
-Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).
+Reference: [Uninstalling](../../../deploy/helm/harbor-credential-provider/README.md#uninstalling). A node upgraded from the old `credential-provider-harbor` naming has legacy-named leftovers as well; [Nodes upgraded from the old name](../../../deploy/helm/harbor-credential-provider/README.md#nodes-upgraded-from-the-old-name) lists them.

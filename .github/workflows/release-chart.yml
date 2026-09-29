@@ -23,7 +23,7 @@ env:
   # The push job may not read this from the packaged chart: that file comes
   # from the ref being released, and the push job is the one holding the
   # registry password.
-  CHART_NAME: credential-provider-harbor
+  CHART_NAME: harbor-credential-provider
 
 # The two jobs split on the credential boundary. `package` runs repository
 # code from the released ref and has no registry password. `push` has the

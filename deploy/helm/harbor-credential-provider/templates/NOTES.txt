@@ -1,10 +1,10 @@
-credential-provider-harbor has been deployed.
+harbor-credential-provider has been deployed.
 
-The deployer DaemonSet will install the credential-provider-harbor binary
+The deployer DaemonSet will install the harbor-credential-provider binary
 on each node and create the kubelet credential provider configuration.
 
 Registry:  {{ .Values.registry.host }}
-Audience:  {{ include "credential-provider-harbor.audience" . }}
+Audience:  {{ include "harbor-credential-provider.audience" . }}
 Profile:   {{ .Values.profile }}
 
 The selected profile controls default host paths:
@@ -23,7 +23,7 @@ A pod turns ready once its node has finished this revision's install.
 Kubelet restart is off, so ready means the files are in place on the node,
 not that kubelet has picked them up:
 {{ end }}
-  kubectl rollout status daemonset/{{ include "credential-provider-harbor.fullname" . }} -n {{ include "credential-provider-harbor.namespace" . }}
+  kubectl rollout status daemonset/{{ include "harbor-credential-provider.fullname" . }} -n {{ include "harbor-credential-provider.namespace" . }}
 {{ else -}}
 The readiness probe is disabled, so pod readiness says nothing about whether a
 node finished installing. Read the logs instead.
@@ -40,8 +40,8 @@ upgrade, or install onto labelled batches of nodes with --set nodeSelector.
 
 To look at the deployer:
 
-  kubectl get daemonset {{ include "credential-provider-harbor.fullname" . }} -n {{ include "credential-provider-harbor.namespace" . }}
-  kubectl logs -l app.kubernetes.io/name={{ include "credential-provider-harbor.name" . }} -n {{ include "credential-provider-harbor.namespace" . }}
+  kubectl get daemonset {{ include "harbor-credential-provider.fullname" . }} -n {{ include "harbor-credential-provider.namespace" . }}
+  kubectl logs -l app.kubernetes.io/name={{ include "harbor-credential-provider.name" . }} -n {{ include "harbor-credential-provider.namespace" . }}
 
 {{- if and (not .Values.kubelet.configure) (has .Values.profile (list "eks" "aws")) }}
 
@@ -73,9 +73,9 @@ out one node at a time.
 Don't forget to apply the RBAC for audience token requests:
 
 {{- if .Values.nodeAudienceRbac.create }}
-  The chart created {{ include "credential-provider-harbor.nodeAudienceRoleName" . }} for {{ include "credential-provider-harbor.audience" . }}.
+  The chart created {{ include "harbor-credential-provider.nodeAudienceRoleName" . }} for {{ include "harbor-credential-provider.audience" . }}.
 {{- else }}
-  Create equivalent RBAC that grants request-serviceaccounts-token-audience on {{ include "credential-provider-harbor.audience" . }} to system:nodes, or enable nodeAudienceRbac.create.
+  Create equivalent RBAC that grants request-serviceaccounts-token-audience on {{ include "harbor-credential-provider.audience" . }} to system:nodes, or enable nodeAudienceRbac.create.
 {{- end }}
 
 To verify image pulling works:

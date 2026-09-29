@@ -11,7 +11,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-CHART_DIR="${REPO_ROOT}/deploy/helm/credential-provider-harbor"
+CHART_DIR="${REPO_ROOT}/deploy/helm/harbor-credential-provider"
 CHART="${CHART_DIR}/Chart.yaml"
 VALUES="${CHART_DIR}/values.yaml"
 

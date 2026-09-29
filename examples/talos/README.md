@@ -90,7 +90,7 @@ read-only overlay populated only by system extensions; `machine.kubelet.extraArg
 cannot redirect it. So the binary must be delivered as an extension.
 
 Sidero builds and publishes the extension from a tagged release of this
-repository (`cmd/credential-provider-harbor`):
+repository:
 
 | | |
 |---|---|
@@ -102,11 +102,9 @@ repository (`cmd/credential-provider-harbor`):
 | Source | [siderolabs/extensions/container-runtime/harbor-credential-provider](https://github.com/siderolabs/extensions/tree/main/container-runtime/harbor-credential-provider) |
 
 > [!IMPORTANT]
-> **Naming.** On Talos the binary and therefore the provider `name` in the
-> kubelet config is **`harbor-credential-provider`**, not
-> `credential-provider-harbor` as in the other examples of this repository. The
-> kubelet resolves the provider binary by `name`, so a mismatch means the
-> provider is never invoked.
+> The provider `name` in the kubelet config must equal the file name the
+> extension installs, `harbor-credential-provider`. The kubelet resolves the
+> provider binary by `name`, so a mismatch means the provider is never invoked.
 
 ## Delivering the extension
 

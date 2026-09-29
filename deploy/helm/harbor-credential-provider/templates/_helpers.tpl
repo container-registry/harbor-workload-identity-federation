@@ -1,14 +1,14 @@
 {{/*
 Chart name, truncated to 63 chars.
 */}}
-{{- define "credential-provider-harbor.name" -}}
+{{- define "harbor-credential-provider.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Fully qualified app name. Release + chart name, max 63 chars.
 */}}
-{{- define "credential-provider-harbor.fullname" -}}
+{{- define "harbor-credential-provider.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,16 +24,16 @@ Fully qualified app name. Release + chart name, max 63 chars.
 {{/*
 Chart label.
 */}}
-{{- define "credential-provider-harbor.chart" -}}
+{{- define "harbor-credential-provider.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels.
 */}}
-{{- define "credential-provider-harbor.labels" -}}
-helm.sh/chart: {{ include "credential-provider-harbor.chart" . }}
-{{ include "credential-provider-harbor.selectorLabels" . }}
+{{- define "harbor-credential-provider.labels" -}}
+helm.sh/chart: {{ include "harbor-credential-provider.chart" . }}
+{{ include "harbor-credential-provider.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -43,17 +43,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels.
 */}}
-{{- define "credential-provider-harbor.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "credential-provider-harbor.name" . }}
+{{- define "harbor-credential-provider.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "harbor-credential-provider.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 ServiceAccount name.
 */}}
-{{- define "credential-provider-harbor.serviceAccountName" -}}
+{{- define "harbor-credential-provider.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "credential-provider-harbor.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "harbor-credential-provider.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
@@ -62,22 +62,22 @@ ServiceAccount name.
 {{/*
 Namespace for namespaced resources.
 */}}
-{{- define "credential-provider-harbor.namespace" -}}
+{{- define "harbor-credential-provider.namespace" -}}
 {{- .Release.Namespace }}
 {{- end }}
 
 {{/*
 Registry audience (defaults to registry.host).
 */}}
-{{- define "credential-provider-harbor.audience" -}}
+{{- define "harbor-credential-provider.audience" -}}
 {{- default .Values.registry.host .Values.registry.audience }}
 {{- end }}
 
 {{/*
 Node audience RBAC resource name.
 */}}
-{{- define "credential-provider-harbor.nodeAudienceRoleName" -}}
-{{- default (printf "%s-node-audience-token" (include "credential-provider-harbor.fullname" .)) .Values.nodeAudienceRbac.name | trunc 63 | trimSuffix "-" }}
+{{- define "harbor-credential-provider.nodeAudienceRoleName" -}}
+{{- default (printf "%s-node-audience-token" (include "harbor-credential-provider.fullname" .)) .Values.nodeAudienceRbac.name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -89,7 +89,7 @@ release-please's helm strategy, whose ChartYaml updater writes `version` and
 nothing else, so a chart-only release cannot move this tag to an image that was
 never built. `task version-check` asserts that invariant on every CI run.
 */}}
-{{- define "credential-provider-harbor.imageTag" -}}
+{{- define "harbor-credential-provider.imageTag" -}}
 {{- if .Values.image.tag }}
 {{- .Values.image.tag }}
 {{- else }}
@@ -100,7 +100,7 @@ never built. `task version-check` asserts that invariant on every CI run.
 {{/*
 Marker file as the installer container sees it: the host path under hostRoot.
 */}}
-{{- define "credential-provider-harbor.markerPath" -}}
+{{- define "harbor-credential-provider.markerPath" -}}
 {{- printf "%s%s" (.Values.installer.hostRoot | trimSuffix "/") .Values.installer.installedMarker }}
 {{- end }}
 
@@ -110,7 +110,7 @@ hostRoot mount is the node's root filesystem without its submounts, so on an
 image that carries /var as a mount of its own the marker would otherwise be
 written inside the container and lost with the pod.
 */}}
-{{- define "credential-provider-harbor.markerDir" -}}
+{{- define "harbor-credential-provider.markerDir" -}}
 {{- .Values.installer.installedMarker | dir }}
 {{- end }}
 
@@ -122,7 +122,7 @@ the ID and force a pointless kubelet restart on every node in the fleet.
 Anything here that extraEnv overrides does change the ID, PRESERVE_ECR_PROVIDER
 included, because it changes the install.
 */}}
-{{- define "credential-provider-harbor.installAffectingEnvNames" -}}
+{{- define "harbor-credential-provider.installAffectingEnvNames" -}}
 PROFILE HOST_ROOT SOURCE_BINARY BINARY_NAME REGISTRY_HOST REGISTRY_AUDIENCE REGISTRY_USERNAME MATCH_IMAGES CACHE_DURATION BIN_DIR CONFIG_DIR CONFIG_FILE CONFIG_PATH CONFIG_FORMAT CONFIGURE_KUBELET RESTART_KUBELET KUBELET_SERVICE SYSTEMD_DROP_IN_PATH FORCE_KUBELET_EXECSTART K3S_CONFIG_DROP_IN_PATH RKE2_CONFIG_DROP_IN_PATH KUBELET_DEFAULTS_PATH MICROK8S_KUBELET_ARGS_PATH PRESERVE_ECR_PROVIDER
 {{- end }}
 
@@ -134,19 +134,19 @@ would let a stale marker satisfy the readiness probe. Pod-lifecycle settings
 (SLEEP_FOREVER) and the marker path itself deliberately stay out: neither
 changes the node install.
 */}}
-{{- define "credential-provider-harbor.chartInstallerEnv" -}}
+{{- define "harbor-credential-provider.chartInstallerEnv" -}}
 - name: PROFILE
   value: {{ .Values.profile | quote }}
 - name: HOST_ROOT
   value: {{ .Values.installer.hostRoot | quote }}
 - name: SOURCE_BINARY
-  value: /usr/local/bin/credential-provider-harbor
+  value: /usr/local/bin/harbor-credential-provider
 - name: BINARY_NAME
   value: {{ .Values.credentialProvider.binaryName | quote }}
 - name: REGISTRY_HOST
   value: {{ required "registry.host is required" .Values.registry.host | quote }}
 - name: REGISTRY_AUDIENCE
-  value: {{ include "credential-provider-harbor.audience" . | quote }}
+  value: {{ include "harbor-credential-provider.audience" . | quote }}
 - name: REGISTRY_USERNAME
   value: {{ .Values.registry.username | quote }}
 - name: MATCH_IMAGES
@@ -184,8 +184,8 @@ What the installer container gets: the chart's variables plus everything in
 extraEnv, recognized or not. extraEnv comes last, so an entry that repeats a
 name above wins, which is what makes it an override.
 */}}
-{{- define "credential-provider-harbor.installerEnv" -}}
-{{- include "credential-provider-harbor.chartInstallerEnv" . }}
+{{- define "harbor-credential-provider.installerEnv" -}}
+{{- include "harbor-credential-provider.chartInstallerEnv" . }}
 {{- with .Values.extraEnv }}
 {{- toYaml . | nindent 0 }}
 {{- end }}
@@ -197,9 +197,9 @@ chart's variables, plus only those extraEnv entries the installer reads. An
 entry it ignores stays out, so setting one does not change the ID and does not
 roll a kubelet restart across the fleet for a node install that is identical.
 */}}
-{{- define "credential-provider-harbor.installIDEnv" -}}
-{{- include "credential-provider-harbor.chartInstallerEnv" . }}
-{{- $names := splitList " " (include "credential-provider-harbor.installAffectingEnvNames" . | trim) }}
+{{- define "harbor-credential-provider.installIDEnv" -}}
+{{- include "harbor-credential-provider.chartInstallerEnv" . }}
+{{- $names := splitList " " (include "harbor-credential-provider.installAffectingEnvNames" . | trim) }}
 {{- $hashed := list }}
 {{- range .Values.extraEnv }}
 {{- if has .name $names }}
@@ -218,10 +218,10 @@ it into the marker file and the readiness probe greps for it, so a marker from
 an earlier revision cannot report this pod Ready before it has installed
 anything. Kept out of the hashed material itself, or it could not be computed.
 */}}
-{{- define "credential-provider-harbor.installID" -}}
+{{- define "harbor-credential-provider.installID" -}}
 {{- $material := printf "%s:%s\n%s"
       .Values.image.repository
-      (include "credential-provider-harbor.imageTag" .)
-      (include "credential-provider-harbor.installIDEnv" .) -}}
+      (include "harbor-credential-provider.imageTag" .)
+      (include "harbor-credential-provider.installIDEnv" .) -}}
 {{- $material | sha256sum | trunc 16 }}
 {{- end }}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Check whether nodes are actually set up to pull from Harbor with
-# credential-provider-harbor.
+# harbor-credential-provider.
 #
 # The common failure is not that the install failed. It is that the binary and
 # the config are in place, and kubelet was never told about them, so pulls keep
@@ -18,13 +18,13 @@
 #   NAMESPACE      namespace of the chart release (default kube-system)
 #   DEBUG_IMAGE    image for the debug pod (default busybox:1.36)
 #   BINARY_NAME    credentialProvider.binaryName, if you changed it
-#                  (default credential-provider-harbor)
+#                  (default harbor-credential-provider)
 
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-kube-system}"
 DEBUG_IMAGE="${DEBUG_IMAGE:-busybox:1.36}"
-BINARY_NAME="${BINARY_NAME:-credential-provider-harbor}"
+BINARY_NAME="${BINARY_NAME:-harbor-credential-provider}"
 
 red() { printf '\033[31m%s\033[0m\n' "$1"; }
 green() { printf '\033[32m%s\033[0m\n' "$1"; }
@@ -256,7 +256,7 @@ check_node() {
   if ! files=$(on_node "${node}" "
     if [ -x '${bindir}/${BINARY_NAME}' ]; then echo BINARY_OK; else echo BINARY_MISSING; fi
     if [ -f '${configpath}' ]; then echo CONFIG_OK; else echo CONFIG_MISSING; fi
-    if grep -q credential-provider-harbor '${configpath}' 2>/dev/null; then echo ENTRY_OK; else echo ENTRY_MISSING; fi
+    if grep -F -q -- '${BINARY_NAME}' '${configpath}' 2>/dev/null; then echo ENTRY_OK; else echo ENTRY_MISSING; fi
   "); then
     red "  could not read the node filesystem"
     return 1
@@ -267,7 +267,7 @@ check_node() {
   case "${files}" in *CONFIG_OK*) ok=yes ;; *) ok=no ;; esac
   report "${ok}" "config present" "config missing at ${configpath}" || failed=1
   case "${files}" in *ENTRY_OK*) ok=yes ;; *) ok=no ;; esac
-  report "${ok}" "provider entry present" "config has no credential-provider-harbor entry" || failed=1
+  report "${ok}" "provider entry present" "config has no ${BINARY_NAME} entry" || failed=1
 
   return "${failed}"
 }
@@ -301,7 +301,7 @@ main() {
   if [ "${rc}" -ne 0 ]; then
     yellow "Some nodes are not ready to pull from Harbor. See the output above."
     echo "Installer logs:"
-    echo "  kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=credential-provider-harbor"
+    echo "  kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=harbor-credential-provider"
   else
     green "All ${#nodes[@]} node(s) checked are set up."
   fi

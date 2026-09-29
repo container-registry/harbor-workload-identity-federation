@@ -11,7 +11,7 @@ This repository releases two things on independent version lines.
 | Train | Path | Tag | Version file |
 |-------|------|-----|--------------|
 | Binaries and image | `.` | `vX.Y.Z` | `.release-please-manifest.json` |
-| Helm chart | `deploy/helm/credential-provider-harbor` | `chart-vX.Y.Z` | `Chart.yaml` `version` |
+| Helm chart | `deploy/helm/harbor-credential-provider` | `chart-vX.Y.Z` | `Chart.yaml` `version` |
 
 They are separate because the chart already sits at `0.1.x` while the binaries are at `0.0.x`, and because a chart-only fix should not force a binary release. release-please assigns each commit to a train by the paths it touches: a commit that only touches the chart directory bumps the chart, anything else bumps the binaries, and a commit touching both bumps both.
 
@@ -38,7 +38,7 @@ So `release-please.yml` closes the gap. After a binary release it runs `scripts/
 
 | Train | What gets published |
 |-------|---------------------|
-| Binaries and image | `linux/amd64` and `linux/arm64` builds of `credential-provider-harbor` and `credential-provider-harbor-installer`, plus `SHA256SUMS`, attached to the GitHub Release. The multi-arch deployer image is pushed with the release tag and `latest`. |
+| Binaries and image | `linux/amd64` and `linux/arm64` builds of `harbor-credential-provider` and `harbor-credential-provider-installer`, plus `SHA256SUMS`, attached to the GitHub Release. The multi-arch deployer image is pushed with the release tag and `latest`. |
 | Helm chart | The chart is packaged from `Chart.yaml` and pushed as an OCI artifact. |
 
 The commit type decides how far the version moves and whether the commit is listed. It does not decide *whether* a release happens: release-please opens a release pull request for any conventional commit in range, and `DefaultVersioningStrategy.determineReleaseType` falls through to a patch bump for every type that is not a feature or a breaking change ([`src/versioning-strategies/default.ts`](https://github.com/googleapis/release-please/blob/main/src/versioning-strategies/default.ts)). A range of nothing but `chore:` still cuts a patch.
@@ -67,8 +67,8 @@ REGISTRY_PASSWORD  secret, not a variable
 With the defaults:
 
 ```text
-image  8gears.container-registry.com/8gcr/credential-provider-harbor-deployer:vX.Y.Z
-chart  oci://8gears.container-registry.com/8gcr/credential-provider-harbor:X.Y.Z
+image  8gears.container-registry.com/8gcr/harbor-credential-provider-deployer:vX.Y.Z
+chart  oci://8gears.container-registry.com/8gcr/harbor-credential-provider:X.Y.Z
 ```
 
 Pushes to `main` also publish a development image tagged with `git describe` output, for example `v0.0.1-8-g4564615`. They do not move `latest`: merging a release pull request triggers both this and the release workflow, and whichever finished last would own the tag. `latest` follows releases only.

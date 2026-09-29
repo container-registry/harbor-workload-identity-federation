@@ -11,7 +11,7 @@ REPO_ROOT="$(cd -- "${E2E_ROOT}/../.." && pwd)"
 
 # The image the DaemonSet runs. Built from this checkout and loaded into the
 # cluster, so the test covers the code in the branch rather than a release.
-E2E_IMAGE_REPO="${E2E_IMAGE_REPO:-localhost/credential-provider-harbor-deployer}"
+E2E_IMAGE_REPO="${E2E_IMAGE_REPO:-localhost/harbor-credential-provider-deployer}"
 E2E_IMAGE_TAG="${E2E_IMAGE_TAG:-e2e}"
 E2E_IMAGE="${E2E_IMAGE_REPO}:${E2E_IMAGE_TAG}"
 
@@ -25,7 +25,7 @@ E2E_KUBECONFIG="${E2E_KUBECONFIG:-${TMPDIR:-/tmp}/cph-e2e-kubeconfig}"
 export KUBECONFIG="${E2E_KUBECONFIG}"
 
 E2E_NAMESPACE="${E2E_NAMESPACE:-kube-system}"
-E2E_RELEASE="${E2E_RELEASE:-credential-provider-harbor}"
+E2E_RELEASE="${E2E_RELEASE:-harbor-credential-provider}"
 E2E_CLUSTER_NAME="${E2E_CLUSTER_NAME:-cph-e2e}"
 
 # pinned is the lowest Kubernetes this component supports, latest is whatever
@@ -104,7 +104,7 @@ dump_state() {
         kubectl describe pod "${name}" -n "${ns}" || true
       done
   kubectl logs -n "${E2E_NAMESPACE}" \
-    -l app.kubernetes.io/name=credential-provider-harbor --tail=200 --prefix || true
+    -l app.kubernetes.io/name=harbor-credential-provider --tail=200 --prefix || true
 }
 
 # Three things a cluster script may override. install-args prints extra helm

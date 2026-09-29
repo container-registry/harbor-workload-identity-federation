@@ -19,14 +19,14 @@ Harbor also has to reach the cluster's signing keys to validate those tokens, so
 ## Install
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   -f examples/kubernetes/aks/values.yaml \
   --set registry.host=harbor.example.com \
   --set registry.audience=harbor.example.com
 
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 ## Confirm
@@ -48,7 +48,7 @@ The installer stops with an error when `/etc/default/kubelet` has no active `KUB
 ## Uninstall
 
 ```bash
-helm uninstall credential-provider-harbor -n kube-system
+helm uninstall harbor-credential-provider -n kube-system
 ```
 
 A node image upgrade or scale-out replaces nodes, and replacements come up clean.
@@ -62,16 +62,16 @@ Entry out, restart, then delete. Kubelet reads the config at startup, so it keep
 sudo "${EDITOR:-vi}" /etc/kubernetes/credential-providers/config.yaml
 
 # 2. Undo the kubelet configuration.
-sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf
 sudo "${EDITOR:-vi}" /etc/default/kubelet   # drop the flags from KUBELET_FLAGS
 sudo systemctl daemon-reload
 
 # 3. Restart, then delete.
 sudo systemctl restart kubelet
-sudo rm -f /usr/local/bin/credential-providers/credential-provider-harbor
-sudo rm -f /var/lib/credential-provider-harbor/install-marker
+sudo rm -f /usr/local/bin/credential-providers/harbor-credential-provider
+sudo rm -f /var/lib/harbor-credential-provider/install-marker
 ```
 
 Delete `config.yaml` outright where the provider is its only entry.
 
-Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).
+Reference: [Uninstalling](../../../deploy/helm/harbor-credential-provider/README.md#uninstalling). A node upgraded from the old `credential-provider-harbor` naming has legacy-named leftovers as well; [Nodes upgraded from the old name](../../../deploy/helm/harbor-credential-provider/README.md#nodes-upgraded-from-the-old-name) lists them.

@@ -16,7 +16,7 @@ Three things block it, and each would need its own answer.
 
 A `MachineConfig` per machine pool that ships three things in one Ignition payload:
 
-1. The `credential-provider-harbor` binary, base64 encoded, into a path outside `/usr`.
+1. The `harbor-credential-provider` binary, base64 encoded, into a path outside `/usr`.
 2. The `CredentialProviderConfig` file.
 3. A systemd drop-in for `kubelet.service` adding the two flags.
 

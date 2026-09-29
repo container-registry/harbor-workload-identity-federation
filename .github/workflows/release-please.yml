@@ -19,8 +19,8 @@ jobs:
       # a subdirectory is prefixed with "<path>--".
       app_released: ${{ steps.release.outputs.release_created }}
       app_tag: ${{ steps.release.outputs.tag_name }}
-      chart_released: ${{ steps.release.outputs['deploy/helm/credential-provider-harbor--release_created'] }}
-      chart_tag: ${{ steps.release.outputs['deploy/helm/credential-provider-harbor--tag_name'] }}
+      chart_released: ${{ steps.release.outputs['deploy/helm/harbor-credential-provider--release_created'] }}
+      chart_tag: ${{ steps.release.outputs['deploy/helm/harbor-credential-provider--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release

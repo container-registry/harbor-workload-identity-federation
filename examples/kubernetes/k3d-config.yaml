@@ -7,7 +7,7 @@ agents: 0
 image: rancher/k3s:v1.34.2-k3s1
 volumes:
   # Mount the credential provider binary to k3s default path
-  - volume: /path/to/credential-provider-harbor:/var/lib/rancher/credentialprovider/bin/credential-provider-harbor
+  - volume: /path/to/harbor-credential-provider:/var/lib/rancher/credentialprovider/bin/harbor-credential-provider
     nodeFilters:
       - all
   # Mount the credential provider config to k3s default path

@@ -41,7 +41,7 @@ CR=$(printf '\r')
 TAB=$(printf '\t')
 
 # The servers read drop-ins in byte order, so the glob has to match. Another
-# locale sorts 99-credential-provider-harbor.yaml after 999-yours.yaml.
+# locale sorts 99-harbor-credential-provider.yaml after 999-yours.yaml.
 LC_ALL=C
 export LC_ALL
 

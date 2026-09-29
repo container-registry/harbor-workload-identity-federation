@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "credential-provider-harbor.fullname" . }}
-  namespace: {{ include "credential-provider-harbor.namespace" . }}
+  name: {{ include "harbor-credential-provider.fullname" . }}
+  namespace: {{ include "harbor-credential-provider.namespace" . }}
   labels:
-    {{- include "credential-provider-harbor.labels" . | nindent 4 }}
+    {{- include "harbor-credential-provider.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
-      {{- include "credential-provider-harbor.selectorLabels" . | nindent 6 }}
+      {{- include "harbor-credential-provider.selectorLabels" . | nindent 6 }}
   {{- with .Values.updateStrategy }}
   updateStrategy:
     {{- toYaml . | nindent 4 }}
@@ -22,7 +22,7 @@ spec:
              template as nil and makes deepCopy fail on a reflect error that
              names neither the value nor the mistake. */}}
       labels:
-        {{- $selector := include "credential-provider-harbor.selectorLabels" . | fromYaml }}
+        {{- $selector := include "harbor-credential-provider.selectorLabels" . | fromYaml }}
         {{- $podLabels := deepCopy (.Values.podLabels | default dict) }}
         {{- toYaml (merge $selector $podLabels) | nindent 8 }}
       {{- with .Values.podAnnotations }}
@@ -35,25 +35,25 @@ spec:
       priorityClassName: {{ . | quote }}
       {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
-      serviceAccountName: {{ include "credential-provider-harbor.serviceAccountName" . }}
+      serviceAccountName: {{ include "harbor-credential-provider.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
       - name: deployer
-        image: "{{ .Values.image.repository }}:{{ include "credential-provider-harbor.imageTag" . }}"
+        image: "{{ .Values.image.repository }}:{{ include "harbor-credential-provider.imageTag" . }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
         env:
-        {{- include "credential-provider-harbor.installerEnv" . | nindent 8 }}
+        {{- include "harbor-credential-provider.installerEnv" . | nindent 8 }}
         - name: SLEEP_FOREVER
           value: {{ .Values.installer.sleep | quote }}
         - name: INSTALLED_MARKER
           value: {{ .Values.installer.installedMarker | quote }}
         - name: INSTALL_ID
-          value: {{ include "credential-provider-harbor.installID" . | quote }}
+          value: {{ include "harbor-credential-provider.installID" . | quote }}
         command:
         - /usr/local/bin/install-credential-provider.sh
         resources:
@@ -71,8 +71,8 @@ spec:
             command:
               - grep
               - -qxF
-              - {{ printf "install-id=%s" (include "credential-provider-harbor.installID" .) | quote }}
-              - {{ include "credential-provider-harbor.markerPath" . | quote }}
+              - {{ printf "install-id=%s" (include "harbor-credential-provider.installID" .) | quote }}
+              - {{ include "harbor-credential-provider.markerPath" . | quote }}
           initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
           periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
           timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
@@ -81,7 +81,7 @@ spec:
         volumeMounts:
         - name: host-root
           mountPath: {{ .Values.installer.hostRoot | quote }}
-        {{- $markerDir := include "credential-provider-harbor.markerDir" . }}
+        {{- $markerDir := include "harbor-credential-provider.markerDir" . }}
         {{- if ne $markerDir "/" }}
         {{- /* The marker has to survive the pod and the node's next boot, and
                host-root is the node's root filesystem without its submounts.

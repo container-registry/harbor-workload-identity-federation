@@ -78,7 +78,7 @@ and its config chains three more.
 | `E2E_CLUSTER_NAME` | `cph-e2e` | |
 | `E2E_KUBECONFIG` | `$TMPDIR/cph-e2e-kubeconfig` | never your own `~/.kube/config` |
 | `E2E_REGISTRY_HOST` | `harbor.example.com` | the host and audience written into the config |
-| `E2E_IMAGE_REPO`, `E2E_IMAGE_TAG` | `localhost/credential-provider-harbor-deployer`, `e2e` | |
+| `E2E_IMAGE_REPO`, `E2E_IMAGE_TAG` | `localhost/harbor-credential-provider-deployer`, `e2e` | |
 
 ## Adding a distribution
 

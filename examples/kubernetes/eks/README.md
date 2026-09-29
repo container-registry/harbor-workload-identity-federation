@@ -45,12 +45,12 @@ Then install the published chart against it. Nothing here needs a checkout of
 this repository:
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   -f values.yaml
 
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 `rollout status` is worth waiting on. A pod reports ready only once its own node
@@ -84,7 +84,7 @@ That URL is publicly reachable, so the Harbor Trusted Issuer can validate tokens
 Each pod logs what it did to its node:
 
 ```bash
-kubectl logs -l app.kubernetes.io/name=credential-provider-harbor -n kube-system
+kubectl logs -l app.kubernetes.io/name=harbor-credential-provider -n kube-system
 ```
 
 A finished node ends on `[INFO] Installation complete`. The
@@ -92,7 +92,7 @@ A finished node ends on `[INFO] Installation complete`. The
 profile, and names the flags it is counting on the AMI to have set:
 
 ```text
-[INFO] Binary already up to date: /host/etc/eks/image-credential-provider/credential-provider-harbor
+[INFO] Binary already up to date: /host/etc/eks/image-credential-provider/harbor-credential-provider
 [INFO] Wrote credential provider config: /host/etc/eks/image-credential-provider/config.json
 [WARN] Kubelet configuration disabled. Ensure kubelet uses --image-credential-provider-bin-dir=/etc/eks/image-credential-provider and --image-credential-provider-config=/etc/eks/image-credential-provider/config.json
 [INFO] Restarting kubelet
@@ -198,7 +198,7 @@ aws ec2 describe-instances \
 ## Uninstall
 
 ```bash
-helm uninstall credential-provider-harbor -n kube-system
+helm uninstall harbor-credential-provider -n kube-system
 ```
 
 Removes the DaemonSet, the ServiceAccount and the RBAC. Touches no node. Enough on its own if the node group is about to roll: replacements come up from the AMI clean.
@@ -208,17 +208,17 @@ To clean a node in place: `config.json` is shared with `ecr-credential-provider`
 Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
 
 ```bash
-# 1. Remove only the credential-provider-harbor entry.
+# 1. Remove only the harbor-credential-provider entry.
 sudo "${EDITOR:-vi}" /etc/eks/image-credential-provider/config.json
 
 # 2. Kubelet reads that file only at startup.
 sudo systemctl restart kubelet
 
 # 3. Nothing calls it now.
-sudo rm -f /etc/eks/image-credential-provider/credential-provider-harbor
-sudo rm -f /var/lib/credential-provider-harbor/install-marker
+sudo rm -f /etc/eks/image-credential-provider/harbor-credential-provider
+sudo rm -f /var/lib/harbor-credential-provider/install-marker
 ```
 
 No kubelet drop-in to remove: the AMI supplies the flags, hence `kubelet.configure=false`.
 
-Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).
+Reference: [Uninstalling](../../../deploy/helm/harbor-credential-provider/README.md#uninstalling). A node upgraded from the old `credential-provider-harbor` naming has legacy-named leftovers as well; [Nodes upgraded from the old name](../../../deploy/helm/harbor-credential-provider/README.md#nodes-upgraded-from-the-old-name) lists them.

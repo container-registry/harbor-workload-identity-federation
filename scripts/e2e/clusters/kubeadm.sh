@@ -131,7 +131,7 @@ up() {
 # nothing about which of those two went wrong.
 dump-node() {
   log "kubelet drop-in"
-  sudo cat /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf 2>&1 || true
+  sudo cat /etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf 2>&1 || true
   log "kubelet unit as systemd merged it"
   sudo systemctl cat kubelet 2>&1 || true
   log "kubelet command line"

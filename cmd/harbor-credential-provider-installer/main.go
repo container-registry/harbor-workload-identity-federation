@@ -20,7 +20,7 @@ import (
 var version = "dev"
 
 const (
-	providerName = "credential-provider-harbor"
+	providerName = "harbor-credential-provider"
 
 	configAPIVersion   = "kubelet.config.k8s.io/v1"
 	providerAPIVersion = "credentialprovider.kubelet.k8s.io/v1"
@@ -49,7 +49,7 @@ const (
 	// installed" and the installer restarts kubelet for a configuration
 	// kubelet already started against, leaving the node NotReady for the
 	// length of that restart on every single boot.
-	defaultInstalledMarker = "/var/lib/credential-provider-harbor/install-marker"
+	defaultInstalledMarker = "/var/lib/harbor-credential-provider/install-marker"
 )
 
 type options struct {
@@ -201,7 +201,7 @@ func optionsFromEnv() (options, error) {
 	return options{
 		Profile:               profile,
 		HostRoot:              env("HOST_ROOT", "/host"),
-		SourceBinary:          env("SOURCE_BINARY", "/usr/local/bin/credential-provider-harbor"),
+		SourceBinary:          env("SOURCE_BINARY", "/usr/local/bin/harbor-credential-provider"),
 		BinaryName:            env("BINARY_NAME", providerName),
 		BinDir:                binDir,
 		ConfigPath:            configPath,
@@ -250,7 +250,7 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 			ConfigPath:          "/var/lib/rancher/credentialprovider/config.yaml",
 			ConfigFormat:        "yaml",
 			KubeletService:      "k3s",
-			K3sConfigDropInPath: "/etc/rancher/k3s/config.yaml.d/99-credential-provider-harbor.yaml",
+			K3sConfigDropInPath: "/etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml",
 		}, nil
 	case "rke2":
 		return profileDefaults{
@@ -259,7 +259,7 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 			ConfigFormat: "yaml",
 			// No default service: detectRKE2Services asks systemd which
 			// unit this node runs.
-			RKE2ConfigDropInPath: "/etc/rancher/rke2/config.yaml.d/99-credential-provider-harbor.yaml",
+			RKE2ConfigDropInPath: "/etc/rancher/rke2/config.yaml.d/99-harbor-credential-provider.yaml",
 		}, nil
 	case "kind":
 		return profileDefaults{
@@ -302,7 +302,7 @@ func run(opts options) error {
 // a restart that takes minutes, or never succeeds, must not leave a marker
 // behind that reports the pod Ready and lets the rollout move to the next node.
 func install(opts options, restart func(options) error) error {
-	fmt.Println("[INFO] === credential-provider-harbor installer ===")
+	fmt.Println("[INFO] === harbor-credential-provider installer ===")
 	fmt.Printf("[INFO] Version: %s\n", version)
 	fmt.Printf("[INFO] Profile: %s\n", opts.Profile)
 	fmt.Printf("[INFO] Registry: %s\n", opts.RegistryHost)
@@ -366,6 +366,18 @@ func install(opts options, restart func(options) error) error {
 			return err
 		}
 		restarted = opts.RestartKubelet
+	}
+
+	// Only once kubelet has actually restarted against the new config. Until
+	// then it is still holding the old entry, which names this file, and
+	// removing it would fail pulls for this registry until the restart lands.
+	// A staged rollout installs everywhere with kubelet.restart=false and
+	// restarts later, so "the config no longer names it" is not enough on its
+	// own: restarted is what says the running kubelet has caught up.
+	if restarted {
+		if err := removeLegacyBinary(opts); err != nil {
+			return err
+		}
 	}
 
 	// Last, and only once the kubelet restart has returned. The probe turns the
@@ -520,6 +532,16 @@ func installCredentialProviderConfig(opts options) (bool, error) {
 	cfg, err := readCredentialProviderConfig(hostConfigPath, opts.ConfigFormat)
 	if err != nil {
 		return false, err
+	}
+
+	// Before the merge, so a node upgraded from the old name is left with one
+	// provider for this registry rather than two. Skipped when the binary name
+	// is pinned back to the old one, so that stays a supported choice.
+	if opts.BinaryName != legacyBinaryName {
+		var removed bool
+		if cfg, removed = removeProvider(cfg, legacyBinaryName); removed {
+			fmt.Printf("[INFO] Removed legacy %s entry from %s\n", legacyBinaryName, opts.ConfigPath)
+		}
 	}
 
 	cfg = mergeProvider(cfg, harborProvider(opts))
@@ -750,6 +772,30 @@ func newCredentialProviderConfig() credentialProviderConfig {
 	}
 }
 
+// legacyBinaryName is what this provider was called before it was renamed to
+// sit the same way round as ecr-credential-provider and the Talos extension. It
+// matters on upgrade rather than on a fresh node: providers are keyed by name,
+// so mergeProvider leaves an entry under the old name in place next to the new
+// one, and the node ends up with two providers matching the same images, one of
+// them calling a binary nothing updates any more. Both are removed below.
+const legacyBinaryName = "credential-provider-harbor"
+
+// removeProvider drops every entry with this name, and reports whether it found
+// one.
+func removeProvider(cfg credentialProviderConfig, name string) (credentialProviderConfig, bool) {
+	providers := make([]credentialProvider, 0, len(cfg.Providers))
+	removed := false
+	for _, existing := range cfg.Providers {
+		if existing.Name == name {
+			removed = true
+			continue
+		}
+		providers = append(providers, existing)
+	}
+	cfg.Providers = providers
+	return cfg, removed
+}
+
 func mergeProvider(cfg credentialProviderConfig, provider credentialProvider) credentialProviderConfig {
 	providers := make([]credentialProvider, 0, len(cfg.Providers)+1)
 	providers = append(providers, provider)
@@ -864,6 +910,24 @@ func sameFileContent(left, right string) (bool, error) {
 		return false, err
 	}
 	return bytes.Equal(leftData, rightData), nil
+}
+
+// removeLegacyBinary deletes the binary left by an install under the old name.
+// A node that never carried it is the common case, so a missing file is not an
+// error.
+func removeLegacyBinary(opts options) error {
+	if opts.BinaryName == legacyBinaryName {
+		return nil
+	}
+	path := hostPath(opts, filepath.Join(opts.BinDir, legacyBinaryName))
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("remove legacy binary %s: %w", path, err)
+	}
+	fmt.Printf("[INFO] Removed legacy binary: %s\n", path)
+	return nil
 }
 
 func hostPath(opts options, path string) string {

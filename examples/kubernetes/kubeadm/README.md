@@ -6,9 +6,9 @@ The default case. Works on any node where kubelet runs under systemd and its uni
 
 | Path on the node | Written by |
 |------------------|------------|
-| `/usr/local/bin/credential-providers/credential-provider-harbor` | The binary, copied from the deployer image |
+| `/usr/local/bin/credential-providers/harbor-credential-provider` | The binary, copied from the deployer image |
 | `/etc/kubernetes/credential-providers/config.yaml` | The kubelet `CredentialProviderConfig` |
-| `/etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf` | A drop-in setting `KUBELET_EXTRA_ARGS` to the two provider flags |
+| `/etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf` | A drop-in setting `KUBELET_EXTRA_ARGS` to the two provider flags |
 | `/etc/default/kubelet` | Only when it already assigns `KUBELET_EXTRA_ARGS`. systemd resolves `EnvironmentFile=` after `Environment=`, so an assignment there beats the drop-in and has to carry the flags too |
 
 Then `systemctl daemon-reload && systemctl restart kubelet`, one node at a time.
@@ -16,14 +16,14 @@ Then `systemctl daemon-reload && systemctl restart kubelet`, one node at a time.
 ## Install
 
 ```bash
-helm upgrade --install credential-provider-harbor \
-  oci://8gears.container-registry.com/8gcr/credential-provider-harbor \
+helm upgrade --install harbor-credential-provider \
+  oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   -f examples/kubernetes/kubeadm/values.yaml \
   --set registry.host=harbor.example.com \
   --set registry.audience=harbor.example.com
 
-kubectl rollout status daemonset/credential-provider-harbor -n kube-system
+kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
 ## Check It Took
@@ -68,7 +68,7 @@ If `/usr/local` is read-only or noexec on your node image, switch to `profile=cu
 ## Uninstall
 
 ```bash
-helm uninstall credential-provider-harbor -n kube-system
+helm uninstall harbor-credential-provider -n kube-system
 ```
 
 Entry out, restart, then delete. Kubelet reads the config at startup, so it keeps exec'ing the provider until a restart; delete the binary first and pulls from Harbor fail against a missing file.
@@ -78,15 +78,15 @@ Entry out, restart, then delete. Kubelet reads the config at startup, so it keep
 sudo "${EDITOR:-vi}" /etc/kubernetes/credential-providers/config.yaml
 
 # 2. Remove the drop-in.
-sudo rm -f /etc/systemd/system/kubelet.service.d/99-credential-provider-harbor.conf
+sudo rm -f /etc/systemd/system/kubelet.service.d/99-harbor-credential-provider.conf
 sudo systemctl daemon-reload
 
 # 3. Restart, then delete.
 sudo systemctl restart kubelet
-sudo rm -f /usr/local/bin/credential-providers/credential-provider-harbor
-sudo rm -f /var/lib/credential-provider-harbor/install-marker
+sudo rm -f /usr/local/bin/credential-providers/harbor-credential-provider
+sudo rm -f /var/lib/harbor-credential-provider/install-marker
 ```
 
 Installed with `profile=custom`? Substitute the `credentialProvider.binDir` and `credentialProvider.configPath` you passed.
 
-Reference: [Uninstalling](../../../deploy/helm/credential-provider-harbor/README.md#uninstalling).
+Reference: [Uninstalling](../../../deploy/helm/harbor-credential-provider/README.md#uninstalling). A node upgraded from the old `credential-provider-harbor` naming has legacy-named leftovers as well; [Nodes upgraded from the old name](../../../deploy/helm/harbor-credential-provider/README.md#nodes-upgraded-from-the-old-name) lists them.

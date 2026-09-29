@@ -10,7 +10,7 @@
       "release-type": "go",
       "exclude-paths": [
         "CONTRIBUTORS.md",
-        "deploy/helm/credential-provider-harbor"
+        "deploy/helm/harbor-credential-provider"
       ],
       "include-component-in-tag": false,
       "include-v-in-tag": true,
@@ -19,11 +19,11 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "deploy/helm/credential-provider-harbor/Chart.yaml"
+          "path": "deploy/helm/harbor-credential-provider/Chart.yaml"
         }
       ]
     },
-    "deploy/helm/credential-provider-harbor": {
+    "deploy/helm/harbor-credential-provider": {
       "release-type": "helm",
       "component": "chart",
       "include-component-in-tag": true,

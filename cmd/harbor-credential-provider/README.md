@@ -1,13 +1,13 @@
-credential-provider-harbor is an image credential provider plugin for Kubernetes
+harbor-credential-provider is an image credential provider plugin for Kubernetes
 that uses service account tokens directly as Harbor registry passwords via
 Federated Robot Accounts.
 
 Usage:
 
   request='{"apiVersion":"credentialprovider.kubelet.k8s.io/v1","kind":"CredentialProviderRequest","image":"...","serviceAccountToken":"..."}'
-  echo "${request}" | credential-provider-harbor [--username=USER]
+  echo "${request}" | harbor-credential-provider [--username=USER]
 
-credential-provider-harbor is called with STDIN of a JSON-serialized
+harbor-credential-provider is called with STDIN of a JSON-serialized
 credentialprovider.kubelet.k8s.io/v1 CredentialProviderRequest, which must
 contain a `serviceAccountToken` value. For example:
 
@@ -28,7 +28,7 @@ To configure this credential plugin on a node:
   kind: CredentialProviderConfig
   apiVersion: kubelet.config.k8s.io/v1
   providers:
-  - name: credential-provider-harbor
+  - name: harbor-credential-provider
     apiVersion: credentialprovider.kubelet.k8s.io/v1
     tokenAttributes:
       requireServiceAccount: true
