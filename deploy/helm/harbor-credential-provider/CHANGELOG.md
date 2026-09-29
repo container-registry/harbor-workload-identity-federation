@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/container-registry/harbor-workload-identity-federation/compare/chart-v0.2.2...chart-v0.3.0) (2026-09-29)
+
+
+### Features
+
+* Rename credential-provider-harbor to harbor-credential-provider ([#51](https://github.com/container-registry/harbor-workload-identity-federation/issues/51)) ([56a586c](https://github.com/container-registry/harbor-workload-identity-federation/commit/56a586cc9910b3ebbb35a7bb671ffa84e50c1295))
+
+
+### Bug Fixes
+
+* **chart:** Install the v0.2.0 deployer by default ([e5f8cdd](https://github.com/container-registry/harbor-workload-identity-federation/commit/e5f8cdde423978bbfe2f7d7fd580b7a0a2ea7ab2))
+
 ## [0.2.2](https://github.com/container-registry/harbor-workload-identity-federation/compare/chart-v0.2.1...chart-v0.2.2) (2026-09-25)
 
 
