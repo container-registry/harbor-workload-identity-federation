@@ -293,6 +293,7 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 		rke2DropIn       string
 		kubeletDefaults  string
 		microK8sArgsPath string
+		sksDropIn        string
 	}{
 		{
 			profile:         "aks",
@@ -323,6 +324,15 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 			kubeletService: "k3s",
 			k3sDropIn:      "/etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml",
 		},
+		{
+			profile:        "sks",
+			binDir:         "/usr/local/bin/credential-providers",
+			configPath:     "/etc/kubernetes/credential-providers/config.yaml",
+			kubeletService: "kubelet",
+			// Sorts after sks.conf, which a 99- prefix does not.
+			systemdDropIn: "/etc/systemd/system/kubelet.service.d/zz-harbor-credential-provider.conf",
+			sksDropIn:     "/etc/systemd/system/kubelet.service.d/sks.conf",
+		},
 	}
 
 	for _, tt := range tests {
@@ -336,6 +346,7 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 				"BIN_DIR", "CONFIG_PATH", "CONFIG_DIR", "CONFIG_FILE", "CONFIG_FORMAT",
 				"KUBELET_SERVICE", "KUBELET_DEFAULTS_PATH", "MICROK8S_KUBELET_ARGS_PATH",
 				"RKE2_CONFIG_DROP_IN_PATH", "K3S_CONFIG_DROP_IN_PATH", "SYSTEMD_DROP_IN_PATH",
+				"SKS_DROP_IN_PATH",
 			} {
 				t.Setenv(name, "")
 			}
@@ -357,6 +368,7 @@ func TestProfileDefaultsCoverTheNewDistributions(t *testing.T) {
 				{"RKE2ConfigDropInPath", opts.RKE2ConfigDropInPath, tt.rke2DropIn},
 				{"KubeletDefaultsPath", opts.KubeletDefaultsPath, tt.kubeletDefaults},
 				{"MicroK8sArgsPath", opts.MicroK8sArgsPath, tt.microK8sArgsPath},
+				{"SKSDropInPath", opts.SKSDropInPath, tt.sksDropIn},
 			} {
 				if field.got != field.want {
 					t.Errorf("%s = %q, want %q", field.name, field.got, field.want)
@@ -853,6 +865,7 @@ func TestValidateOptionsRejectsPathsThatNameADirectory(t *testing.T) {
 		"RKE2_CONFIG_DROP_IN_PATH":   func(o *options, v string) { o.RKE2ConfigDropInPath = v },
 		"KUBELET_DEFAULTS_PATH":      func(o *options, v string) { o.KubeletDefaultsPath = v },
 		"MICROK8S_KUBELET_ARGS_PATH": func(o *options, v string) { o.MicroK8sArgsPath = v },
+		"SKS_DROP_IN_PATH":           func(o *options, v string) { o.SKSDropInPath = v },
 	}
 
 	for name, set := range fields {

@@ -17,6 +17,7 @@ Pick your distribution. The pages differ because distributions disagree about wh
 | RKE2 | One `helm install` | [`rke2/`](rke2/) |
 | MicroK8s | One `helm install`; a snap refresh undoes it | [`microk8s/`](microk8s/) |
 | AKS | One `helm install` | [`aks/`](aks/) |
+| Exoscale SKS | One `helm install` | [`sks/`](sks/) |
 | Talos Linux | System extension, not the chart | [`../talos/`](../talos/) |
 | OpenShift | Not supported; the page explains what it would take | [`openshift/`](openshift/) |
 | GKE Autopilot | Not possible. No privileged host access, no kubelet control | — |

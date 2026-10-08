@@ -1,0 +1,14 @@
+# Exoscale SKS.
+#
+# The sks profile exists because SKS starts kubelet from the ExecStart in
+# /etc/systemd/system/kubelet.service.d/sks.conf, which spells every flag out
+# and expands no variable, so the KUBELET_EXTRA_ARGS drop-in the generic
+# profile writes is read and does nothing. The installer copies that ExecStart
+# into a drop-in that sorts after sks.conf and adds the two provider flags.
+
+profile: sks
+
+registry:
+  host: harbor.example.com
+  # Must match the audience configured in the Harbor Trusted Issuer, exactly.
+  audience: harbor.example.com
