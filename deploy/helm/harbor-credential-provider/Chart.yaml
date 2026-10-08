@@ -25,7 +25,7 @@ annotations:
   # chart a commit of its own to be released for.
   artifacthub.io/images: |
     - name: harbor-credential-provider-deployer
-      image: 8gears.container-registry.com/8gcr/harbor-credential-provider-deployer:v0.2.0
+      image: 8gears.container-registry.com/8gcr/harbor-credential-provider-deployer:v0.3.0
   artifacthub.io/operator: "false"
   artifacthub.io/links: |
     - name: source
