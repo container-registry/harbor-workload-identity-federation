@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/container-registry/harbor-workload-identity-federation/compare/chart-v0.3.0...chart-v0.4.0) (2026-10-08)
+
+
+### Features
+
+* **installer:** Add sks profile for Exoscale SKS nodes ([9aa0af7](https://github.com/container-registry/harbor-workload-identity-federation/commit/9aa0af7e6af9fe18d10ea35de91a3af55cea54b2))
+* **installer:** Add sks profile for Exoscale SKS nodes ([63b9402](https://github.com/container-registry/harbor-workload-identity-federation/commit/63b940207681a3668fd35f0f589e0c8424b57974))
+
+
+### Bug Fixes
+
+* **chart:** Install the v0.3.0 deployer by default ([e2f2361](https://github.com/container-registry/harbor-workload-identity-federation/commit/e2f23619cd4a57f83cb969f9be509eb51b1e98b4))
+
 ## [0.3.0](https://github.com/container-registry/harbor-workload-identity-federation/compare/chart-v0.2.2...chart-v0.3.0) (2026-09-29)
 
 
