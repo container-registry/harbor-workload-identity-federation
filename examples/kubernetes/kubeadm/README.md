@@ -42,7 +42,7 @@ The two flags have to show up on the live kubelet process, not just in the drop-
 
 If the drop-in exists but the flags are missing from the process, check `/etc/default/kubelet` first. The kubeadm packages ship it with an empty `KUBELET_EXTRA_ARGS=`, and systemd lets that erase what the drop-in set, whichever order the drop-ins merge in. The installer patches that file when it finds such an assignment, so a node where it is still empty was configured by a version that did not.
 
-If both places carry the flags and the process still does not, the node's kubelet unit does not reference `$KUBELET_EXTRA_ARGS` at all. That is a distribution difference: see the [AKS](../aks/), [RKE2](../rke2/), or [MicroK8s](../microk8s/) notes for what to do instead.
+If both places carry the flags and the process still does not, the node's kubelet unit does not reference `$KUBELET_EXTRA_ARGS` at all. That is a distribution difference: see the [AKS](../aks/), [RKE2](../rke2/), [MicroK8s](../microk8s/), or [SKS](../sks/) notes for what to do instead.
 
 ## Then Pull Something
 

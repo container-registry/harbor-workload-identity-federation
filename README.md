@@ -98,6 +98,7 @@ Select a platform profile when the default generic kubelet paths are not right f
 | `gke` | GKE Standard best-effort | generic kubelet paths |
 | `aks` | AKS nodes | generic kubelet paths, wired through `/etc/default/kubelet` |
 | `microk8s` | MicroK8s nodes | `/var/snap/microk8s/common/credentialprovider/config.yaml` |
+| `sks` | Exoscale SKS nodes | generic kubelet paths, wired through a drop-in that replaces the `ExecStart` from `sks.conf` |
 | `custom` | Explicit paths via values | user-provided |
 
 Examples:
@@ -587,7 +588,7 @@ Here's an example of what a GitLab CI OIDC token looks like:
 
 This section describes how to set up a local k3s/k3d cluster with Kubernetes Image Credential Provider (KEP-4412) to pull images using Service Account tokens (Federated Robot Accounts).
 
-> For other distributions, [`examples/kubernetes/`](examples/kubernetes/) has a page each for kubeadm, EKS, GKE, AKS, k3s, k3d, kind, RKE2 and MicroK8s, covering where each one keeps its kubelet arguments. OpenShift has a page too, saying why it is not supported. [`scripts/verify-node-install.sh`](scripts/verify-node-install.sh) checks whether a node is actually set up.
+> For other distributions, [`examples/kubernetes/`](examples/kubernetes/) has a page each for kubeadm, EKS, GKE, AKS, k3s, k3d, kind, RKE2, MicroK8s and Exoscale SKS, covering where each one keeps its kubelet arguments. OpenShift has a page too, saying why it is not supported. [`scripts/verify-node-install.sh`](scripts/verify-node-install.sh) checks whether a node is actually set up.
 >
 > kind is the only distribution tested end to end, on Kubernetes 1.34. The other pages come from each distribution's docs and from what the installer writes. The paths and the mechanisms are right, but nobody has watched a pull succeed on them yet. Run the verify script after installing, and tell us if a page is wrong.
 

@@ -20,7 +20,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 # -- Installation profile. Supported: generic, eks, aws, k3s, k3d, rke2, kind,
-# gke, aks, microk8s, custom.
+# gke, aks, microk8s, sks, custom.
 profile: generic
 
 # Harbor registry configuration
@@ -78,7 +78,8 @@ kubelet:
   restart: true
   # -- Override kubelet service name. Defaults by profile when empty.
   serviceName: ""
-  # -- Override systemd drop-in path for generic/kind/gke/custom profiles.
+  # -- Override systemd drop-in path for generic/kind/gke/sks/custom profiles.
+  # On sks its file name has to sort after sks.conf, or the installer refuses it.
   systemdDropInPath: ""
   # -- For kind only: force a kubelet ExecStart override instead of only setting KUBELET_EXTRA_ARGS.
   # Enable this if the live kubelet command line does not include the credential-provider flags after install.
@@ -93,6 +94,9 @@ kubelet:
   # -- Override the MicroK8s kubelet arguments file for the microk8s profile.
   # Reset by a snap refresh, which is why the DaemonSet rewrites it.
   microk8sArgsPath: ""
+  # -- Override the Exoscale SKS kubelet drop-in the sks profile copies the
+  # kubelet ExecStart from. Read only, never written.
+  sksDropInPath: ""
 
 nodeAudienceRbac:
   # -- Create RBAC that allows kubelets to request service account tokens for registry.audience

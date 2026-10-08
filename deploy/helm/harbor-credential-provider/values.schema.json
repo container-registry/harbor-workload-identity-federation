@@ -84,6 +84,7 @@
         "gke",
         "aks",
         "microk8s",
+        "sks",
         "custom"
       ]
     },
@@ -201,7 +202,8 @@
         },
         "rke2ConfigDropInPath": { "$ref": "#/definitions/optionalFilePath" },
         "kubeletDefaultsPath": { "$ref": "#/definitions/optionalFilePath" },
-        "microk8sArgsPath": { "$ref": "#/definitions/optionalFilePath" }
+        "microk8sArgsPath": { "$ref": "#/definitions/optionalFilePath" },
+        "sksDropInPath": { "$ref": "#/definitions/optionalFilePath" }
       }
     },
     "nodeAudienceRbac": {

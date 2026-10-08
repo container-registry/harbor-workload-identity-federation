@@ -74,6 +74,7 @@ type options struct {
 	RKE2ConfigDropInPath  string
 	KubeletDefaultsPath   string
 	MicroK8sArgsPath      string
+	SKSDropInPath         string
 	PreserveECRProvider   bool
 	SleepForever          bool
 	InstalledMarker       string
@@ -90,6 +91,7 @@ type profileDefaults struct {
 	RKE2ConfigDropInPath string
 	KubeletDefaultsPath  string
 	MicroK8sArgsPath     string
+	SKSDropInPath        string
 	PreserveECRProvider  bool
 }
 
@@ -220,6 +222,7 @@ func optionsFromEnv() (options, error) {
 		RKE2ConfigDropInPath:  env("RKE2_CONFIG_DROP_IN_PATH", defaults.RKE2ConfigDropInPath),
 		KubeletDefaultsPath:   env("KUBELET_DEFAULTS_PATH", defaults.KubeletDefaultsPath),
 		MicroK8sArgsPath:      env("MICROK8S_KUBELET_ARGS_PATH", defaults.MicroK8sArgsPath),
+		SKSDropInPath:         env("SKS_DROP_IN_PATH", defaults.SKSDropInPath),
 		PreserveECRProvider:   preserveECR,
 		SleepForever:          boolEnv("SLEEP_FOREVER", false),
 		InstalledMarker:       env("INSTALLED_MARKER", defaultInstalledMarker),
@@ -286,6 +289,17 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 			ConfigFormat:     "yaml",
 			KubeletService:   "snap.microk8s.daemon-kubelite",
 			MicroK8sArgsPath: "/var/snap/microk8s/current/args/kubelet",
+		}, nil
+	case "sks":
+		// The drop-in is named to sort after sks.conf: systemd applies
+		// drop-ins in file name order, and a 99- prefix sorts before "sks".
+		return profileDefaults{
+			BinDir:            "/usr/local/bin/credential-providers",
+			ConfigPath:        "/etc/kubernetes/credential-providers/config.yaml",
+			ConfigFormat:      "yaml",
+			KubeletService:    "kubelet",
+			SystemdDropInPath: sksHarborDropInPath,
+			SKSDropInPath:     sksKubeletDropInPath,
 		}, nil
 	default:
 		return profileDefaults{}, fmt.Errorf("unsupported PROFILE %q", profile)
@@ -428,8 +442,8 @@ func validateOptions(opts options) error {
 		}
 	}
 
-	// These two are pasted verbatim into a systemd Environment= line, a kind
-	// ExecStart line, two YAML drop-ins, the MicroK8s arguments file and the
+	// These two are pasted verbatim into a systemd Environment= line, the kind
+	// and SKS ExecStart lines, two YAML drop-ins, the MicroK8s arguments file and the
 	// AKS KUBELET_FLAGS assignment. Each of those has its own quoting rules,
 	// and a path carrying any of these parses as something else in at least
 	// one of them: systemd expands $VAR in ExecStart and reads % as a
@@ -447,6 +461,7 @@ func validateOptions(opts options) error {
 		"RKE2_CONFIG_DROP_IN_PATH":   opts.RKE2ConfigDropInPath,
 		"KUBELET_DEFAULTS_PATH":      opts.KubeletDefaultsPath,
 		"MICROK8S_KUBELET_ARGS_PATH": opts.MicroK8sArgsPath,
+		"SKS_DROP_IN_PATH":           opts.SKSDropInPath,
 	}
 	for name, path := range optionalPaths {
 		if path == "" {

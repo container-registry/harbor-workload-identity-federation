@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -41,6 +42,8 @@ func configureKubelet(opts options) (bool, error) {
 		return configureKubeletDefaults(opts)
 	case "microk8s":
 		return configureMicroK8sArgs(opts)
+	case "sks":
+		return configureSKS(opts)
 	case "kind":
 		if !opts.ForceKubeletExecStart {
 			return configureSystemdKubelet(opts)
@@ -354,6 +357,254 @@ func peekArg(value string, i int) (string, int) {
 
 func isArgSpace(c byte) bool {
 	return c == ' ' || c == '\t'
+}
+
+const (
+	// sksKubeletDropInPath is the drop-in Exoscale SKS nodes start kubelet
+	// from. The installer reads it and never writes it.
+	sksKubeletDropInPath = "/etc/systemd/system/kubelet.service.d/sks.conf"
+	sksHarborDropInPath  = "/etc/systemd/system/kubelet.service.d/zz-harbor-credential-provider.conf"
+)
+
+// configureSKS writes a drop-in that replaces the kubelet ExecStart of an
+// Exoscale SKS node with the same command line plus the two credential
+// provider flags.
+//
+// SKS spells every kubelet flag out in the ExecStart of its own drop-in and
+// expands no variable there, so neither KUBELET_EXTRA_ARGS nor an
+// EnvironmentFile reaches kubelet, and KubeletConfiguration has no field for
+// these two settings. A later drop-in that resets ExecStart is the one place
+// left. The command line is copied from sks.conf on every run, so a node whose
+// SKS drop-in changes picks that up the next time the installer runs instead
+// of staying on a stale copy.
+func configureSKS(opts options) (bool, error) {
+	sourcePath := opts.SKSDropInPath
+	if sourcePath == "" {
+		sourcePath = sksKubeletDropInPath
+	}
+	dropInPath := systemdDropInPath(opts)
+
+	// systemd applies a unit's drop-ins in file name order, whatever directory
+	// each lives in. One that sorts before sks.conf has its ExecStart reset by
+	// sks.conf, and kubelet starts without the flags.
+	if filepath.Base(dropInPath) <= filepath.Base(sourcePath) {
+		return false, fmt.Errorf("kubelet drop-in %s sorts before %s, which would reset its ExecStart; "+
+			"pick a kubelet.systemdDropInPath (SYSTEMD_DROP_IN_PATH) whose file name sorts after %q",
+			dropInPath, sourcePath, filepath.Base(sourcePath))
+	}
+
+	hostSourcePath := hostPath(opts, sourcePath)
+	existing, err := os.ReadFile(hostSourcePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("SKS kubelet drop-in %s does not exist; this node does not start kubelet the way SKS nodes do. "+
+			"Use the profile that matches this node, or set kubelet.sksDropInPath (SKS_DROP_IN_PATH) to the drop-in that holds its kubelet ExecStart", hostSourcePath)
+	}
+	if err != nil {
+		return false, fmt.Errorf("read SKS kubelet drop-in: %w", err)
+	}
+
+	args, err := lastExecStart(string(existing))
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", hostSourcePath, err)
+	}
+
+	if hasCredentialProviderFlags(args, opts.BinDir, opts.ConfigPath) {
+		fmt.Printf("[INFO] %s already starts kubelet with %s=%s and %s=%s\n", hostSourcePath, binDirFlag, opts.BinDir, configFlag, opts.ConfigPath)
+		return false, nil
+	}
+
+	args = append(withoutCredentialProviderFlags(args),
+		binDirFlag+"="+opts.BinDir,
+		configFlag+"="+opts.ConfigPath)
+
+	// The copied arguments go back byte for byte, so whatever quoting, $ or %
+	// SKS wrote means the same thing here as it did in sks.conf. Only the two
+	// appended flags are new, and validateOptions keeps those free of anything
+	// systemd would read as syntax.
+	return writeHostFile(opts, hostFile{
+		path: dropInPath,
+		content: "# Written by harbor-credential-provider-installer: the kubelet command line\n" +
+			"# from the SKS drop-in, plus the image credential provider flags.\n" +
+			"[Service]\n" +
+			"ExecStart=\n" +
+			"ExecStart=" + strings.Join(args, " \\\n\t") + "\n",
+		label: "SKS kubelet ExecStart drop-in",
+		title: "SKS kubelet ExecStart drop-in",
+	})
+}
+
+// lastExecStart returns the arguments of the ExecStart in a unit file's
+// [Service] section that systemd would run, unquoted words left as written.
+// An empty ExecStart= clears the ones before it, as it does in systemd, so a
+// file that ends on a reset, or has no ExecStart at all, is an error rather
+// than an empty command line.
+func lastExecStart(content string) ([]string, error) {
+	var args []string
+	section := ""
+	for _, line := range unitLogicalLines(content) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = line
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || section != "[Service]" || strings.TrimSpace(key) != "ExecStart" {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			args = nil
+			continue
+		}
+		parsed, err := splitExecArgs(value)
+		if err != nil {
+			return nil, fmt.Errorf("parse ExecStart: %w", err)
+		}
+		args = parsed
+	}
+	if len(args) == 0 {
+		return nil, errors.New("no ExecStart in [Service]")
+	}
+	return args, nil
+}
+
+// unitLogicalLines joins a unit file's continuation lines the way systemd
+// reads them: a line ending in an unescaped backslash continues on the next
+// one, the backslash becoming a space. Comment lines are dropped, including
+// those inside a continuation, which systemd skips there too.
+func unitLogicalLines(content string) []string {
+	var lines []string
+	pending := ""
+	continuing := false
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimRight(line, "\r")
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
+			continue
+		}
+		trailing := len(line) - len(strings.TrimRight(line, `\`))
+		if trailing%2 == 1 {
+			pending += line[:len(line)-1] + " "
+			continuing = true
+			continue
+		}
+		lines = append(lines, pending+line)
+		pending = ""
+		continuing = false
+	}
+	if continuing {
+		lines = append(lines, pending)
+	}
+	return lines
+}
+
+// splitExecArgs splits an ExecStart value into its words at whitespace outside
+// quotes, keeping each word exactly as written. An unterminated quote, a
+// dangling backslash or a ";" separating a second command is refused: each
+// means the line is something this installer would rewrite wrongly.
+func splitExecArgs(value string) ([]string, error) {
+	var args []string
+	var word strings.Builder
+	inWord := false
+	var quote byte
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case c == '\\':
+			if i+1 >= len(value) {
+				return nil, errors.New("dangling backslash")
+			}
+			word.WriteByte(c)
+			word.WriteByte(value[i+1])
+			i++
+			inWord = true
+		case quote != 0:
+			word.WriteByte(c)
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			word.WriteByte(c)
+			quote = c
+			inWord = true
+		case isArgSpace(c):
+			if inWord {
+				args = append(args, word.String())
+				word.Reset()
+				inWord = false
+			}
+		default:
+			word.WriteByte(c)
+			inWord = true
+		}
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unterminated %c quote", quote)
+	}
+	if inWord {
+		args = append(args, word.String())
+	}
+	for _, arg := range args {
+		if arg == ";" {
+			return nil, errors.New(`more than one command line, separated by ";"`)
+		}
+	}
+	return args, nil
+}
+
+// hasCredentialProviderFlags reports whether the arguments pass each of the
+// two credential provider flags exactly once, with these values.
+func hasCredentialProviderFlags(args []string, binDir, configPath string) bool {
+	values := map[string][]string{}
+	for i := 0; i < len(args); i++ {
+		name, value, inline := strings.Cut(unquoteWord(args[i]), "=")
+		if name != binDirFlag && name != configFlag {
+			continue
+		}
+		if !inline && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			i++
+			value = args[i]
+		}
+		values[name] = append(values[name], unquoteWord(value))
+	}
+	return slices.Equal(values[binDirFlag], []string{binDir}) &&
+		slices.Equal(values[configFlag], []string{configPath})
+}
+
+// withoutCredentialProviderFlags drops both credential provider flags, along
+// with every following word that can only be part of their value, as
+// stripCredentialProviderFlags does for an argument string: kubelet takes no
+// positional arguments, so a leftover word would become the value of the flag
+// in front of it.
+func withoutCredentialProviderFlags(args []string) []string {
+	kept := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		name, _, _ := strings.Cut(unquoteWord(args[i]), "=")
+		if name != binDirFlag && name != configFlag {
+			kept = append(kept, args[i])
+			continue
+		}
+		for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			i++
+		}
+	}
+	return kept
+}
+
+// unquoteWord strips one pair of matching quotes around a whole word, or
+// around the value of a --flag="value" word.
+func unquoteWord(word string) string {
+	unquote := func(s string) string {
+		if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
+			return s[1 : len(s)-1]
+		}
+		return s
+	}
+	word = unquote(word)
+	if name, value, ok := strings.Cut(word, "="); ok {
+		return name + "=" + unquote(value)
+	}
+	return word
 }
 
 // configureMicroK8sArgs edits the snap's kubelet arguments file. MicroK8s runs

@@ -8,10 +8,10 @@ Audience:  {{ include "harbor-credential-provider.audience" . }}
 Profile:   {{ .Values.profile }}
 
 The selected profile controls default host paths:
-  generic/gke/custom: /usr/local/bin/credential-providers and /etc/kubernetes/credential-providers/config.yaml
-  eks/aws:            /etc/eks/image-credential-provider and /etc/eks/image-credential-provider/config.json
-  k3s/k3d:            /var/lib/rancher/credentialprovider/bin and /var/lib/rancher/credentialprovider/config.yaml
-  kind:               /var/lib/kubelet/credential-provider and /var/lib/kubelet/credential-provider-config.yaml
+  generic/gke/aks/sks/custom: /usr/local/bin/credential-providers and /etc/kubernetes/credential-providers/config.yaml
+  eks/aws:                    /etc/eks/image-credential-provider and /etc/eks/image-credential-provider/config.json
+  k3s/k3d:                    /var/lib/rancher/credentialprovider/bin and /var/lib/rancher/credentialprovider/config.yaml
+  kind:                       /var/lib/kubelet/credential-provider and /var/lib/kubelet/credential-provider-config.yaml
 
 
 {{ if .Values.readinessProbe.enabled -}}
