@@ -24,7 +24,7 @@ So the `sks` profile reads the last `ExecStart` in `sks.conf` and writes `/etc/s
 
 The file name matters. systemd applies a unit's drop-ins in file name order, and `99-harbor-credential-provider.conf`, the name the `generic` profile uses, sorts before `sks.conf`: `sks.conf` would reset its `ExecStart` and kubelet would start without the flags. The installer refuses a `kubelet.systemdDropInPath` whose file name does not sort after `sks.conf`.
 
-The command line is copied on every install rather than once, so a node whose `sks.conf` changed is brought back in line the next time the installer runs on it. If `sks.conf` already passes both flags with the profile's paths, the installer writes nothing and does not restart kubelet.
+The command line is copied on every install rather than once, so a node whose `sks.conf` changed is brought back in line the next time the installer runs on it. If `sks.conf` already passes both flags with the profile's paths, the installer writes nothing and does not restart kubelet. If an earlier run left its drop-in behind, it removes that drop-in and restarts kubelet once, so kubelet runs the command line in `sks.conf`.
 
 ## Install
 

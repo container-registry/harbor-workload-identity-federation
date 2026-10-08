@@ -156,6 +156,46 @@ func TestConfigureSKSLeavesANodeThatAlreadyHasTheFlags(t *testing.T) {
 	requireNoHostFile(t, opts, sksHarborDropInPath)
 }
 
+// An SKS drop-in that gains the flags after an earlier run must not leave
+// kubelet on the command line that run copied.
+func TestConfigureSKSRemovesItsDropInOnceSKSConfHasTheFlags(t *testing.T) {
+	opts := sksOptions(t, sksConf)
+	if changed, err := configureKubelet(opts); err != nil || !changed {
+		t.Fatalf("first configureKubelet() = %t, %v, want true, nil", changed, err)
+	}
+	if got := readHostFile(t, opts, sksHarborDropInPath); got != sksWantDropIn {
+		t.Fatalf("drop-in =\n%s\nwant\n%s", got, sksWantDropIn)
+	}
+
+	withFlags := strings.Replace(sksConf, "-v=1\n", "-v=2 \\\n"+
+		"\t"+binDirFlag+"="+sksBinDir+" \\\n"+
+		"\t"+configFlag+"="+sksConfigPath+"\n", 1)
+	if err := os.WriteFile(hostPath(opts, sksKubeletDropInPath), []byte(withFlags), 0644); err != nil {
+		t.Fatalf("rewrite sks.conf: %v", err)
+	}
+
+	changed, err := configureKubelet(opts)
+	if err != nil {
+		t.Fatalf("second configureKubelet() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("second configureKubelet() changed = false, want true")
+	}
+	requireNoHostFile(t, opts, sksHarborDropInPath)
+
+	changed, err = configureKubelet(opts)
+	if err != nil {
+		t.Fatalf("third configureKubelet() error: %v", err)
+	}
+	if changed {
+		t.Fatal("third configureKubelet() changed = true, want false")
+	}
+	requireNoHostFile(t, opts, sksHarborDropInPath)
+	if got := readHostFile(t, opts, sksKubeletDropInPath); got != withFlags {
+		t.Fatalf("sks.conf was modified:\n%s", got)
+	}
+}
+
 func TestConfigureSKSReplacesFlagsWithWrongValues(t *testing.T) {
 	tests := map[string]string{
 		"inline values":          " \\\n\t" + binDirFlag + "=/old/bin \\\n\t" + configFlag + "=/old/config.yaml",

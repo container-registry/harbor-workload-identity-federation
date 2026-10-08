@@ -376,7 +376,9 @@ const (
 // these two settings. A later drop-in that resets ExecStart is the one place
 // left. The command line is copied from sks.conf on every run, so a node whose
 // SKS drop-in changes picks that up the next time the installer runs instead
-// of staying on a stale copy.
+// of staying on a stale copy. Once sks.conf itself passes both flags, the
+// drop-in is not needed: none is written, and one left by an earlier run is
+// removed.
 func configureSKS(opts options) (bool, error) {
 	sourcePath := opts.SKSDropInPath
 	if sourcePath == "" {
@@ -410,7 +412,18 @@ func configureSKS(opts options) (bool, error) {
 
 	if hasCredentialProviderFlags(args, opts.BinDir, opts.ConfigPath) {
 		fmt.Printf("[INFO] %s already starts kubelet with %s=%s and %s=%s\n", hostSourcePath, binDirFlag, opts.BinDir, configFlag, opts.ConfigPath)
-		return false, nil
+		// A drop-in from an earlier run sorts after sks.conf and would keep
+		// kubelet on the command line copied back then.
+		hostDropInPath := hostPath(opts, dropInPath)
+		err := os.Remove(hostDropInPath)
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		if err != nil {
+			return false, fmt.Errorf("remove SKS kubelet ExecStart drop-in: %w", err)
+		}
+		fmt.Printf("[INFO] Removed SKS kubelet ExecStart drop-in, no longer needed: %s\n", hostDropInPath)
+		return true, nil
 	}
 
 	args = append(withoutCredentialProviderFlags(args),
