@@ -34,6 +34,10 @@ This is the same shape as the [Talos example](../../talos/), where the binary sh
 
 Nobody has built the MachineConfig generator yet. If you run OpenShift and want this, open an issue describing your OpenShift version and machine pool layout, and say whether you can test a reboot-inducing MachineConfig on a real cluster. Testing is the part that is hard to do without you. See [CONTRIBUTING.md](../../../CONTRIBUTING.md).
 
+## Harbor Side
+
+Whichever way the nodes get the provider, Harbor needs the federated robot account feature gate on and a Trusted Issuer with its `audience` field. See [Harbor Setup](../README.md#harbor-setup).
+
 ## In the Meantime
 
 Image pull secrets still work on OpenShift. Federated Robot Accounts can remove them from your [CI pipelines](../../github-actions/) today, and from clusters on the distributions the [index](../README.md) lists as working, which may already be most of where your pull secrets live.

@@ -12,15 +12,29 @@ Issuer: https://gitlab.com
 Audience: <your-registry-domain-or-url>
 ```
 
-Create a federated robot account with claim rules matching your project, for example:
+The issuer needs the `audience` field, and an admin has to turn on the federated robot account feature gate once per Harbor. Then create the issuer, a robot account tied to it, and a claim rule on `project_path`:
 
-```text
-iss == https://gitlab.com
-aud == <your-registry-domain-or-url>
-project_path == <group>/<project>
+```bash
+H=harbor.example.com
+AUD=<your-registry-domain-or-url>
+A=(-u admin:<password> -H "Content-Type: application/json")
+
+# Feature gate, once per Harbor.
+curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
+  -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
+
+TI=$(jq -n --arg a "$AUD" --arg n gitlab-ci \
+  '{name:$n,offline_validation:false,openid_config_url:"https://gitlab.com/.well-known/openid-configuration",audience:$a}' \
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+
+RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
+  -d '{"name":"gitlab-ci","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"<project>","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+
+curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
+  -d '{"rules":[{"claim_path":"project_path","value":"<group>/<project>","robot_id":'$RB'}]}'
 ```
 
-Grant the robot account push or pull permission on the target Harbor project.
+`iss` and `aud` are not claim rules. Both belong to the issuer, and Harbor rejects them as claim paths. `project_path` has to be in the issuer's `claims_supported`, and the match is exact. Add a `push` access entry next to `pull` if the job pushes images.
 
 ## Use The Example
 

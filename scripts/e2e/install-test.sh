@@ -75,6 +75,8 @@ NAMESPACE="${E2E_NAMESPACE}" "${REPO_ROOT}/scripts/verify-node-install.sh"
 # The RBAC that lets kubelet ask for a token with the registry audience. The
 # chart creates it; without it the pull fails later with no clue why.
 log "checking the node audience RBAC"
+# Vacuous: kubectl prints "verb is not a known verb" and the check still passes.
+# A real check needs a SubjectAccessReview with that verb; until then the pull test is the proof.
 kubectl auth can-i request-serviceaccounts-token-audience "${E2E_REGISTRY_HOST}" \
   --as-group=system:nodes --as="system:node:probe" >/dev/null \
   || fail "kubelets cannot request a token for ${E2E_REGISTRY_HOST}"

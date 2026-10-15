@@ -8,6 +8,21 @@ RKE2 runs kubelet inside the `rke2-agent` process rather than as its own systemd
 
 kubelet asks the API server for a token whose audience is `registry.audience`. What decides whether it gets one is the node audience RBAC, which the chart creates. There is no server-node setting to add, and in particular the audience does not go in `kube-apiserver-arg` as `--api-audiences`: that flag lists what the API server accepts on tokens presented to it, not what it issues.
 
+## Harbor Side
+
+Federated robot accounts are off until an admin enables the feature gate, and the Trusted Issuer needs its `audience` field. The commands are under [Harbor Setup](../README.md#harbor-setup), which uses the offline JWKS variant for rke2.
+
+A Harbor on plain HTTP also needs `/etc/rancher/rke2/registries.yaml` on every node, or the pull fails. Restart the unit after writing it:
+
+```yaml
+mirrors:
+  "<host:port>":
+    endpoint:
+      - "http://<host:port>"
+```
+
+A Harbor on TLS needs no such file.
+
 ## Install
 
 ```bash
@@ -82,6 +97,12 @@ systemctl is-active rke2-server rke2-agent
 sudo systemctl restart rke2-server    # or rke2-agent
 sudo rm -f /var/lib/rancher/credentialprovider/bin/harbor-credential-provider
 sudo rm -f /var/lib/harbor-credential-provider/install-marker
+```
+
+The provider directory outlives the binary. Once nothing else uses it, remove it too:
+
+```bash
+sudo rm -rf /var/lib/rancher/credentialprovider
 ```
 
 If you set `kubelet-arg` yourself instead of letting the chart write the drop-in, undo that edit.

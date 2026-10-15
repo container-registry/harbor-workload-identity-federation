@@ -48,6 +48,8 @@ If both places carry the flags and the process still does not, the node's kubele
 
 The chart already created the node audience RBAC (`nodeAudienceRbac.create` defaults to true), so there is nothing to apply for that. [`rbac-audience.yaml`](../rbac-audience.yaml) is the standalone version, for when you install the binary without the chart.
 
+Harbor needs the federated robot account feature gate on, a Trusted Issuer with its `audience` field, and a robot with an exact `sub` rule before a pull can work. The commands are under [Harbor Setup](../README.md#harbor-setup).
+
 Point [`pod-example.yaml`](../pod-example.yaml) at an image that exists in your Harbor, then:
 
 ```bash

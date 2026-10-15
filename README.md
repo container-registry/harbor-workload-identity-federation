@@ -52,7 +52,7 @@ export INSTALLER_IMAGE="${REGISTRY_ADDRESS}/${PROJECT_NAME}/harbor-credential-pr
 # Harbor registry that workloads pull from.
 export HARBOR_REGISTRY=harbor.example.com
 
-# Audience Harbor expects in service account tokens. Use the exact value configured in Harbor FedIDP.
+# Audience Harbor expects in service account tokens. Use the exact value in the `audience` field of the Harbor Trusted Issuer.
 export HARBOR_AUDIENCE=https://harbor.example.com
 ```
 
@@ -293,17 +293,17 @@ This example demonstrates how to authenticate to Harbor from a GitHub Actions wo
 
 ### Prerequisites
 
-1. **Harbor Setup**: Configure a Trusted Issuer in Harbor:
-   - OpenID Configuration URL: `https://token.actions.githubusercontent.com/.well-known/openid-configuration`
-   - JWKS URI: Automatically discovered
-   - Issuer: Automatically discovered
+1. **Harbor Setup**: Create a Trusted Issuer in Harbor (`POST /api/v2.0/trusted-issuers`):
+   - OpenID Configuration URL: `https://token.actions.githubusercontent.com/.well-known/openid-configuration` (`openid_config_url`)
+   - Audience: `<your-registry-domain>` (e.g., `macfly4200.8gears.ch`), required
+   - Issuer and JWKS URI: Harbor reads both from the discovery document
+
+   The `images/harbor-federated-idp-setup.png` screenshot predates 2.15 and its labels may not match; it needs a refresh.
 
    ![Harbor Trusted Issuer Setup](images/harbor-federated-idp-setup.png)
 
-2. **Robot Account**: Create a federated robot account in Harbor with claim rules matching your GitHub repository:
-   - `iss`: `https://token.actions.githubusercontent.com`
-   - `aud`: `<your-registry-domain>` (e.g., `macfly4200.8gears.ch`) — The audience can be any string, but using your registry domain is recommended. This ensures tokens are scoped specifically to your registry and prevents token reuse across different services.
-   - `repository`: `<owner>/<repo>` (e.g., `myorg/myrepo`)
+2. **Robot Account**: Turn on the federated robot account feature gate once (admin), then create a federated robot account tied to the Trusted Issuer, with a claim rule matching your GitHub repository. The `iss` and `aud` claims are not claim rules: the issuer and the `audience` field on the Trusted Issuer cover them, and Harbor rejects both as claim paths. The audience can be any string, but using your registry domain keeps tokens scoped to your registry. The full API flow, which uses `openid_config_url` for online validation, is in [`examples/github-actions/`](examples/github-actions/).
+   - `repository`: `<owner>/<repo>`
 
 ### Workflow Configuration
 
@@ -433,11 +433,12 @@ Here's an example of what a GitHub Actions OIDC token looks like:
 }
 ```
 
-**Key claims for Harbor claim rules:**
+**Key claims in the token.** `iss` and `aud` are set on the Trusted Issuer, so only the others can be claim rules:
+
 | Claim | Description | Example Value |
 |-------|-------------|---------------|
-| `iss` | Token issuer | `https://token.actions.githubusercontent.com` |
-| `aud` | Target audience (your registry) | `macfly4200.8gears.ch` |
+| `iss` | Token issuer (set on the Trusted Issuer, not a rule) | `https://token.actions.githubusercontent.com` |
+| `aud` | Target audience (the issuer's `audience` field, not a rule) | `macfly4200.8gears.ch` |
 | `sub` | Subject identifier | `repo:container-registry/federated-idp-examples:ref:refs/heads/main` |
 | `repository` | Full repository name | `container-registry/federated-idp-examples` |
 | `repository_owner` | Organization or user | `container-registry` |
@@ -452,15 +453,13 @@ This example demonstrates how to authenticate to Harbor from a GitLab CI pipelin
 
 ### Prerequisites
 
-1. **Harbor Setup**: Configure a Trusted Issuer in Harbor:
-   - OpenID Configuration URL: `https://gitlab.com/.well-known/openid-configuration`
-   - JWKS URI: Automatically discovered 
-   - Issuer: Automatically discovered
+1. **Harbor Setup**: Create a Trusted Issuer in Harbor (`POST /api/v2.0/trusted-issuers`):
+   - OpenID Configuration URL: `https://gitlab.com/.well-known/openid-configuration` (`openid_config_url`)
+   - Audience: `<your-registry-domain>` (e.g., `macfly4200.8gears.ch`), required
+   - Issuer and JWKS URI: Harbor reads both from the discovery document
 
-2. **Robot Account**: Create a federated robot account in Harbor with claim rules matching your GitLab project:
-   - `iss`: `https://gitlab.com`
-   - `aud`: `<your-registry-domain>` (e.g., `macfly4200.8gears.ch`)
-   - `project_path`: `<namespace>/<project>` (e.g., `8gears/container-registry/harbor-workload-identity-federation`)
+2. **Robot Account**: Turn on the federated robot account feature gate once (admin), then create a federated robot account tied to the Trusted Issuer, with a claim rule matching your GitLab project. The `iss` and `aud` claims are not claim rules: the issuer and the `audience` field on the Trusted Issuer cover them, and Harbor rejects both as claim paths. The audience can be any string, but using your registry domain keeps tokens scoped to your registry. The full API flow, which uses `openid_config_url` for online validation, is in [`examples/gitlab-ci/`](examples/gitlab-ci/).
+   - `project_path`: `<namespace>/<project>`
 
 ### Pipeline Configuration
 
@@ -556,11 +555,12 @@ Here's an example of what a GitLab CI OIDC token looks like:
 }
 ```
 
-**Key claims for Harbor claim rules:**
+**Key claims in the token.** `iss` and `aud` are set on the Trusted Issuer, so only the others can be claim rules:
+
 | Claim | Description | Example Value |
 |-------|-------------|---------------|
-| `iss` | Token issuer | `https://gitlab.com` |
-| `aud` | Target audience (your registry) | `macfly4200.8gears.ch` |
+| `iss` | Token issuer (set on the Trusted Issuer, not a rule) | `https://gitlab.com` |
+| `aud` | Target audience (the issuer's `audience` field, not a rule) | `macfly4200.8gears.ch` |
 | `sub` | Subject identifier | `project_path:8gears/container-registry/harbor-workload-identity-federation:ref_type:branch:ref:main` |
 | `project_path` | Full project path | `8gears/container-registry/harbor-workload-identity-federation` |
 | `namespace_path` | Group/namespace path | `8gears/container-registry` |
@@ -643,13 +643,28 @@ export KUBECONFIG=kubeconfig.yaml
 # 3. Apply RBAC for audience token requests
 kubectl apply -f examples/kubernetes/rbac-audience.yaml
 
-# 4. Get JWKS for Harbor configuration
-kubectl get --raw /openid/v1/jwks | jq .
+# 4. Harbor side: feature gate, Trusted Issuer with the JWKS, robot account, sub rule.
+#    H is your Harbor host, AUD the audience (same value as registry.audience).
+H=harbor.example.com
+AUD=harbor.example.com
+A=(-u admin:<password> -H "Content-Type: application/json")
 
-# 5. Configure the Harbor Trusted Issuer with the JWKS
-# 6. Create robot account with claim rules
+curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
+  -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
 
-# 7. Deploy test pod
+JWKS=$(kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)")
+ISS=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
+TI=$(jq -n --argjson k "$JWKS" --arg iss "$ISS" --arg a "$AUD" --arg n k3d \
+  '{name:$n,issuer:$iss,offline_validation:true,jwks_keys:$k,audience:$a}' \
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+
+# 5. Robot account tied to the issuer, then its claim rule
+RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
+  -d '{"name":"k3d","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"library","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
+  -d '{"rules":[{"claim_path":"sub","value":"system:serviceaccount:default:default","robot_id":'$RB'}]}'
+
+# 6. Deploy test pod
 kubectl apply -f examples/kubernetes/pod-example.yaml
 kubectl get pod httpd -w
 ```
@@ -757,20 +772,25 @@ spec:
 
 ### Harbor Configuration
 
-1. **Export JWKS from cluster:**
-   ```bash
-   kubectl get --raw /openid/v1/jwks | jq .
-   ```
+The commands are in the Quick Start above. In short:
+
+1. **Turn on the feature gate** (admin, once): `PUT /api/v2.0/configurations` with `enable_commercial_federated_robot_accounts` and `enable_project_federated_robot_accounts` set to `true`. Every federated robot call returns 403 until then.
 
 2. **Create a Trusted Issuer in Harbor:**
-   - Issuer: `https://kubernetes.default.svc.cluster.local`
-   - Audience: `<your-registry-domain>`
-   - JWKS: Paste the JSON output
+   - Issuer: the value of `kubectl get --raw /.well-known/openid-configuration | jq -r .issuer`
+   - Audience: `<your-registry-domain>`, a required field on the issuer
+   - JWKS: the output of `kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)"`, with `offline_validation` set to `true`
 
-3. **Create Robot Account with claim rules:**
-   - `sub` equals `system:serviceaccount:default:default` (specific SA)
-   - Or `sub` matches `system:serviceaccount:*:*` (any SA)
-   - Grant pull permission on target repository
+3. **Create the robot account** with `trusted_issuer_id` set to the issuer's ID and pull permission on the target project.
+
+4. **Add a claim rule** through `POST /api/v2.0/trusted-issuers/<id>/claims`, with the robot's `robot_id`:
+   - `sub` equals `system:serviceaccount:default:default`
+
+   Matching is exact. `system:serviceaccount:*:*` does not match every service account; the token is rejected with 401. Add one rule per service account, for example `system:serviceaccount:default:default` and `system:serviceaccount:team-a:builder`, or pin on a nested claim such as `kubernetes.io.namespace`.
+
+   Do not add `iss` or `aud` rules. Both belong to the issuer, and Harbor answers `400 claim_path 'iss' is not accepted`.
+
+A Harbor on plain HTTP also needs a containerd registry entry on each node; see [Plain HTTP and non-standard ports](examples/kubernetes/README.md#plain-http-and-non-standard-ports).
 
 ### Example JWT Token
 
@@ -801,12 +821,13 @@ spec:
 }
 ```
 
-**Key claims for Harbor robot account rules:**
+**Key claims in the token.** `iss` and `aud` are set on the Trusted Issuer, so only the others can be claim rules:
+
 
 | Claim | Description | Example Value |
 |-------|-------------|---------------|
-| `iss` | Token issuer | `https://kubernetes.default.svc.cluster.local` |
-| `aud` | Target audience | `macfly4200.8gears.ch` |
+| `iss` | Token issuer (set on the Trusted Issuer, not a rule) | `https://kubernetes.default.svc.cluster.local` |
+| `aud` | Target audience (the issuer's `audience` field, not a rule) | `macfly4200.8gears.ch` |
 | `sub` | Subject identifier | `system:serviceaccount:default:default` |
 | `kubernetes.io.namespace` | Kubernetes namespace | `default` |
 | `kubernetes.io.serviceaccount.name` | Service account name | `default` |
@@ -827,8 +848,11 @@ spec:
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `audience not found in pod spec volume` | Missing RBAC for audience | Apply `rbac-audience.yaml` |
-| `no robots matched your token` | No robot with matching claims | Create robot with `sub` claim rule |
-| `401 Unauthorized` | JWKS mismatch or wrong audience | Verify JWKS and audience in Harbor |
+| `no robots matched your token` | No robot with matching claims | Add an exact `sub` claim rule through the issuer's `/claims` endpoint |
+| `403` from the trusted issuer or robot API | Federated robot account feature gate is off | Set `enable_commercial_federated_robot_accounts` and `enable_project_federated_robot_accounts` to `true` |
+| `400 audience is required` | Trusted Issuer created without `audience` | Add the `audience` field |
+| `400 claim_path 'iss' is not accepted` | `iss` or `aud` sent as a claim rule | Remove it; both belong to the issuer |
+| `401 Unauthorized` | JWKS mismatch, wrong audience, or a `sub` rule that is not an exact match | Verify JWKS, the issuer's audience and the exact `sub` value |
 
 ### References
 

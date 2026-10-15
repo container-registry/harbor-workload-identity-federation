@@ -25,6 +25,21 @@ kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 
 The installer then restarts the k3s service. It detects whether the node runs `k3s` or `k3s-agent`, so a mixed server and agent cluster needs no extra values.
 
+## Harbor Side
+
+Federated robot accounts are off until an admin enables the feature gate, and the Trusted Issuer needs its `audience` field. The commands are under [Harbor Setup](../README.md#harbor-setup), which uses the offline JWKS variant for k3s.
+
+A Harbor on plain HTTP also needs `/etc/rancher/k3s/registries.yaml` on every node, or the pull fails. Restart the unit after writing it:
+
+```yaml
+mirrors:
+  "<host:port>":
+    endpoint:
+      - "http://<host:port>"
+```
+
+A Harbor on TLS needs no such file.
+
 ## Audience
 
 The node has to be allowed to ask for a token with your Harbor audience. That permission is the node audience RBAC, which the chart creates by default, or apply it by hand from [`../rbac-audience.yaml`](../rbac-audience.yaml).
@@ -67,6 +82,12 @@ sudo "${EDITOR:-vi}" /var/lib/rancher/credentialprovider/config.yaml
 sudo systemctl restart k3s        # k3s-agent on an agent node
 sudo rm -f /var/lib/rancher/credentialprovider/bin/harbor-credential-provider
 sudo rm -f /var/lib/harbor-credential-provider/install-marker
+```
+
+The provider directory outlives the binary. Once nothing else uses it, remove it too:
+
+```bash
+sudo rm -rf /var/lib/rancher/credentialprovider
 ```
 
 Delete `config.yaml` outright where the provider is its only entry.

@@ -61,7 +61,9 @@ GKE's issuer is `https://container.googleapis.com/v1/projects/<project>/location
 kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
 ```
 
-It is publicly reachable, so the Harbor Trusted Issuer can validate online.
+It is publicly reachable, so the Harbor Trusted Issuer can validate online. Set `openid_config_url` to `<issuer>/.well-known/openid-configuration` and the required `audience` field to the value in `registry.audience`. Any claim path you use in a rule, such as `sub`, has to be in the issuer's `claims_supported`.
+
+Federated robot accounts are off until an admin enables the feature gate, so turn that on first. The commands for the gate, the issuer, the robot and the claim rule are under [Harbor Setup](../README.md#harbor-setup).
 
 ## Check It Took
 
