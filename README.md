@@ -22,7 +22,7 @@ The Harbor side of this feature is documented at https://container-registry.com/
 
 This repository holds the runnable parts: the kubelet credential provider, the installer, the Helm chart, the per-distribution guides, and the GitHub Actions and GitLab CI examples.
 
-The repository used to be called `federated-idp-examples`. GitHub redirects the old URLs, so older links and the sample token below still carry that name.
+The repository used to be called `federated-idp-examples`. GitHub redirects the old URLs. Workflows, tokens and claim rules see the current name, `container-registry/harbor-workload-identity-federation`.
 
 ## Supported Identity Providers
 
@@ -300,7 +300,7 @@ This example demonstrates how to authenticate to Harbor from a GitHub Actions wo
    - Audience: `<your-registry-domain>` (e.g., `macfly4200.8gears.ch`), required
    - Issuer and JWKS URI: Harbor reads both from the discovery document
 
-   The `images/harbor-federated-idp-setup.png` screenshot predates 2.15 and its labels may not match; it needs a refresh.
+   The screenshot below predates Harbor 2.15, so its labels may differ from the current form.
 
    ![Harbor Trusted Issuer Setup](images/harbor-federated-idp-setup.png)
 
@@ -309,7 +309,7 @@ This example demonstrates how to authenticate to Harbor from a GitHub Actions wo
 
 ### Workflow Configuration
 
-See a [successful run example](https://github.com/container-registry/harbor-workload-identity-federation/actions/runs/19678450809).
+See a [successful run example](https://github.com/container-registry/harbor-workload-identity-federation/actions/runs/19678450809). It ran before the rename, under the old name `federated-idp-examples`.
 
 ```yaml
 name: Create Image and Push Using Federated Robot Account
@@ -386,7 +386,7 @@ To inspect the JWT token contents during workflow execution:
 
 ### Example JWT Token
 
-Here's an example of what a GitHub Actions OIDC token looks like. It was issued before this repository was renamed, so `sub`, `repository` and the workflow refs show the old name `federated-idp-examples`. Claim rules match exactly, so take the values from a token your own workflow mints, not from this sample.
+Here's an example of what a GitHub Actions OIDC token looks like. It comes from the run linked above, which ran before the rename; the repository name in `sub`, `repository` and the workflow refs is updated to the current one, which is what GitHub puts in tokens now. IDs, timestamps and SHAs are from the original run. Claim rules match exactly, so take the values from a token your own workflow mints.
 
 **JWT Header:**
 ```json
@@ -411,14 +411,14 @@ Here's an example of what a GitHub Actions OIDC token looks like. It was issued 
   "head_ref": "",
   "iat": 1764090468,
   "iss": "https://token.actions.githubusercontent.com",
-  "job_workflow_ref": "container-registry/federated-idp-examples/.github/workflows/example_1.yml@refs/heads/main",
+  "job_workflow_ref": "container-registry/harbor-workload-identity-federation/.github/workflows/example_1.yml@refs/heads/main",
   "job_workflow_sha": "15a5ebfa3fb5ddf10c4b4250e14496bec7f03a56",
   "jti": "6cf8862b-b832-4372-9998-22026ecd21a1",
   "nbf": 1764090168,
   "ref": "refs/heads/main",
   "ref_protected": "false",
   "ref_type": "branch",
-  "repository": "container-registry/federated-idp-examples",
+  "repository": "container-registry/harbor-workload-identity-federation",
   "repository_id": "1104004353",
   "repository_owner": "container-registry",
   "repository_owner_id": "46576199",
@@ -428,9 +428,9 @@ Here's an example of what a GitHub Actions OIDC token looks like. It was issued 
   "run_number": "4",
   "runner_environment": "github-hosted",
   "sha": "15a5ebfa3fb5ddf10c4b4250e14496bec7f03a56",
-  "sub": "repo:container-registry/federated-idp-examples:ref:refs/heads/main",
+  "sub": "repo:container-registry/harbor-workload-identity-federation:ref:refs/heads/main",
   "workflow": "Create Image and Push Using Federated Robot Account",
-  "workflow_ref": "container-registry/federated-idp-examples/.github/workflows/example_1.yml@refs/heads/main",
+  "workflow_ref": "container-registry/harbor-workload-identity-federation/.github/workflows/example_1.yml@refs/heads/main",
   "workflow_sha": "15a5ebfa3fb5ddf10c4b4250e14496bec7f03a56"
 }
 ```
@@ -441,8 +441,8 @@ Here's an example of what a GitHub Actions OIDC token looks like. It was issued 
 |-------|-------------|---------------|
 | `iss` | Token issuer (set on the Trusted Issuer, not a rule) | `https://token.actions.githubusercontent.com` |
 | `aud` | Target audience (the issuer's `audience` field, not a rule) | `macfly4200.8gears.ch` |
-| `sub` | Subject identifier | `repo:container-registry/federated-idp-examples:ref:refs/heads/main` |
-| `repository` | Full repository name | `container-registry/federated-idp-examples` |
+| `sub` | Subject identifier | `repo:container-registry/harbor-workload-identity-federation:ref:refs/heads/main` |
+| `repository` | Full repository name | `container-registry/harbor-workload-identity-federation` |
 | `repository_owner` | Organization or user | `container-registry` |
 | `ref` | Git reference | `refs/heads/main` |
 | `actor` | User who triggered the workflow | `Vad1mo` |
@@ -649,7 +649,7 @@ kubectl apply -f examples/kubernetes/rbac-audience.yaml
 #    H is your Harbor host, AUD the audience (same value as registry.audience).
 H=harbor.example.com
 AUD=harbor.example.com
-A=(-u admin:<password> -H "Content-Type: application/json")
+A=(-u 'admin:<password>' -H "Content-Type: application/json")
 
 curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
   -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
@@ -855,6 +855,7 @@ A Harbor on plain HTTP also needs a containerd registry entry on each node; see 
 | `400 audience is required` | Trusted Issuer created without `audience` | Add the `audience` field |
 | `400 claim_path 'iss' is not accepted` | `iss` or `aud` sent as a claim rule | Remove it; both belong to the issuer |
 | `401 Unauthorized` | JWKS mismatch, wrong audience, or a `sub` rule that is not an exact match | Verify JWKS, the issuer's audience and the exact `sub` value |
+| `trusted issuer <name> has no audience` in the harbor-core log, `401` on pull | Trusted Issuer created before Harbor 2.15.12 without an issuer-level `aud` rule | Set its audience once; see [Upgrading Harbor to 2.15.12](deploy/helm/harbor-credential-provider/README.md#upgrading-harbor-to-21512) |
 
 ### References
 

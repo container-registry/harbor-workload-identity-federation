@@ -45,8 +45,10 @@ The flow below is the one tested against Harbor 2.15.12. Run it once per cluster
 ```bash
 H=harbor.example.com                  # your Harbor host, with :port if it is not 443
 AUD=harbor.example.com                # the audience; same value as registry.audience in the chart
-A=(-u admin:<password> -H "Content-Type: application/json")
+A=(-u 'admin:<password>' -H "Content-Type: application/json")
 ```
+
+Upgrading from a Harbor older than 2.15.12 with an existing Trusted Issuer? Check its audience first: [Upgrading Harbor to 2.15.12](../../deploy/helm/harbor-credential-provider/README.md#upgrading-harbor-to-21512).
 
 **1. Turn on the feature gate.** Federated robot accounts are off by default, and every call below returns 403 until you enable them. This is a system configuration, so you do it once per Harbor:
 
@@ -58,14 +60,14 @@ curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
 **2. Create the Trusted Issuer.** Find the cluster's service account issuer:
 
 ```bash
-kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
+ISS=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
+echo "$ISS"
 ```
 
 `audience` is a field on the Trusted Issuer, and Harbor refuses the issuer without it (`400 audience is required`). If the issuer is not reachable from Harbor, as on kind, k3d, k3s, RKE2 and Talos, use offline validation and pass the cluster's public keys inline:
 
 ```bash
 JWKS=$(kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)")
-ISS=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
 TI=$(jq -n --argjson k "$JWKS" --arg iss "$ISS" --arg a "$AUD" --arg n my-cluster \
   '{name:$n,issuer:$iss,offline_validation:true,jwks_keys:$k,audience:$a}' \
   | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
