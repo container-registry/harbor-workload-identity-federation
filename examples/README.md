@@ -29,6 +29,8 @@ Use the same audience value in both places:
 Harbor Trusted Issuer audience == token request audience
 ```
 
+From Harbor 2.15.12, the audience is a field of the Trusted Issuer, not a claim rule, and Harbor rejects `aud` and `iss` claim rules. Match the workload with other claims, such as `sub`. A Trusted Issuer created before 2.15.12 without an issuer-level `aud` claim rule has no audience after the upgrade and rejects every token; [Upgrading Harbor to 2.15.12](../deploy/helm/harbor-credential-provider/README.md#upgrading-harbor-to-21512) has the fix.
+
 For registry publishing in this repository's CI/release workflows, set these GitHub repository variables and secret:
 
 ```text

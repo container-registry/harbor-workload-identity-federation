@@ -27,7 +27,7 @@ profile: generic
 registry:
   # -- Harbor registry hostname (REQUIRED). Used for matchImages in credential provider config.
   host: ""
-  # -- Token audience (defaults to registry.host if empty)
+  # -- Token audience (defaults to registry.host if empty). Must equal the audience field of the Harbor Trusted Issuer.
   audience: ""
   # -- Image match patterns. Defaults to registry.host when empty.
   matchImages: []
