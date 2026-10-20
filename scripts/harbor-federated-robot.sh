@@ -132,11 +132,30 @@ cmd_setup() {
   local iid
   iid=$(idp_id)
   if [ -n "${iid}" ]; then
+    # The lookup is by name only, so make sure it is the issuer asked for before
+    # reusing it or writing to it.
+    local existing aud have_iss
+    existing=$(api GET "/trusted-issuers/${iid}")
+    have_iss=$(echo "${existing}" | jq -r '.issuer // empty')
+    if [ "${have_iss%/}" != "${OIDC_ISSUER%/}" ]; then
+      red "issuer ${IDP_NAME} is for ${have_iss}, expected ${OIDC_ISSUER%/}; pick another IDP_NAME"
+      exit 1
+    fi
     # The audience is immutable once set, but an issuer created before Harbor
     # 2.15.12 has none and rejects every token until it is set once.
-    local aud
-    aud=$(api GET "/trusted-issuers/${iid}" | jq -r '.audience // empty')
+    aud=$(echo "${existing}" | jq -r '.audience // empty')
     if [ -z "${aud}" ]; then
+      # Legacy aud claim rules cannot be deleted and are still compared with the
+      # token, so one with another value would keep its robot from matching
+      # after the audience is set for good. Stop before that happens.
+      local stale
+      stale=$(api GET "/trusted-issuers/${iid}/claims?claim_path=aud" \
+        | jq -r --arg a "${OIDC_AUDIENCE}" '[.[]? | select(.value != $a) | "\(.value) (robot \(.robot_id))"] | join(", ")')
+      if [ -n "${stale}" ]; then
+        red "issuer ${IDP_NAME} has aud claim rules for another audience: ${stale}"
+        echo "set OIDC_AUDIENCE to that audience, or recreate the issuer and its robots" >&2
+        exit 1
+      fi
       local code
       code=$(api_code PUT "/trusted-issuers/${iid}" \
         "$(jq -nc --arg a "${OIDC_AUDIENCE}" '{audience: $a}')")
