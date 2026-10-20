@@ -322,4 +322,4 @@ curl -u admin -X PUT -H 'Content-Type: application/json' \
   https://harbor.example.com/api/v2.0/trusted-issuers/<id>
 ```
 
-The audience cannot be changed after it is set. Robot accounts and their claim rules need no change. Leftover `aud` and `iss` claim rules cannot be deleted; those on a robot are still compared with the token, so they keep matching as long as their values do.
+The audience can be set only once. Another `PUT` answers `cannot modify audience after it is set`, so a wrong value means deleting the Trusted Issuer and creating it again. Harbor refuses to delete a Trusted Issuer that still has robots (`Please delete the associated robots before deleting the trusted issuer`), so their robots have to be deleted and recreated as well. Robot accounts and their claim rules need no change. Leftover `aud` and `iss` claim rules cannot be deleted; those on a robot are still compared with the token, so they keep matching as long as their values do.
