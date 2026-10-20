@@ -314,6 +314,14 @@ Harbor 2.15.12 moved the audience from an `aud` claim rule to a field of the Tru
 trusted issuer <name> has no audience; set it before tokens from <issuer> can be accepted
 ```
 
+Before setting it, list the issuer's legacy `aud` claim rules:
+
+```bash
+curl -u admin 'https://harbor.example.com/api/v2.0/trusted-issuers/<id>/claims?claim_path=aud'
+```
+
+Every one of them must carry the audience you are about to set. A robot whose `aud` rule has another value can never match once the audience is set, because the token's `aud` has to equal both, and that rule cannot be deleted on its own. Recreate such a robot as described below.
+
 Set the audience once, to the token's `aud` (`registry.audience` for this chart), in the portal edit form or through the API:
 
 ```bash
@@ -322,4 +330,14 @@ curl -u admin -X PUT -H 'Content-Type: application/json' \
   https://harbor.example.com/api/v2.0/trusted-issuers/<id>
 ```
 
-The audience cannot be changed after it is set. Robot accounts and their claim rules need no change. Leftover `aud` and `iss` claim rules cannot be deleted; those on a robot are still compared with the token, so they keep matching as long as their values do.
+When the audience is right, robot accounts and their claim rules need no change. Leftover `aud` and `iss` claim rules cannot be deleted through the claims API; those on a robot are still compared with the token, so they keep matching as long as their values do.
+
+The audience can be set only once. Another `PUT` answers `cannot modify audience after it is set`, so a wrong value means deleting the Trusted Issuer and creating it again. Harbor refuses to delete a Trusted Issuer that still has robots (`Please delete the associated robots before deleting the trusted issuer`), and deleting a robot deletes its claim rules with it. So:
+
+1. Record the Trusted Issuer's settings (`GET /api/v2.0/trusted-issuers/<id>`: name, issuer or OpenID configuration URL, validation mode, JWKS, project), each robot's permissions, and the claim rules (`GET /api/v2.0/trusted-issuers/<id>/claims`).
+2. Delete the robots, then the Trusted Issuer.
+3. Create the Trusted Issuer again from the recorded settings, with the right `audience`.
+4. Create the robots again with `trusted_issuer_id` set to the new issuer and the same permissions.
+5. Add their claim rules again against the new robot IDs, leaving out `aud` and `iss`.
+
+Restore the rules exactly. A robot with no claim rules matches no token, but one recreated with fewer or looser rules than before, for example without its `sub` rule, accepts tokens from workloads it was never meant for.

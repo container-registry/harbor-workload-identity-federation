@@ -22,6 +22,8 @@ The Harbor side of this feature is documented at https://container-registry.com/
 
 This repository holds the runnable parts: the kubelet credential provider, the installer, the Helm chart, the per-distribution guides, and the GitHub Actions and GitLab CI examples.
 
+The repository used to be called `federated-idp-examples`. GitHub redirects the old URLs, so older links and the sample token below still carry that name.
+
 ## Supported Identity Providers
 
 - GitHub Actions
@@ -307,7 +309,7 @@ This example demonstrates how to authenticate to Harbor from a GitHub Actions wo
 
 ### Workflow Configuration
 
-See a [successful run example](https://github.com/container-registry/federated-idp-examples/actions/runs/19678450809).
+See a [successful run example](https://github.com/container-registry/harbor-workload-identity-federation/actions/runs/19678450809).
 
 ```yaml
 name: Create Image and Push Using Federated Robot Account
@@ -384,7 +386,7 @@ To inspect the JWT token contents during workflow execution:
 
 ### Example JWT Token
 
-Here's an example of what a GitHub Actions OIDC token looks like:
+Here's an example of what a GitHub Actions OIDC token looks like. It was issued before this repository was renamed, so `sub`, `repository` and the workflow refs show the old name `federated-idp-examples`. Claim rules match exactly, so take the values from a token your own workflow mints, not from this sample.
 
 **JWT Header:**
 ```json
