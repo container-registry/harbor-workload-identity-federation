@@ -327,7 +327,7 @@ Set the audience once, to the token's `aud` (`registry.audience` for this chart)
 ```bash
 curl -u admin -X PUT -H 'Content-Type: application/json' \
   -d '{"audience": "harbor.example.com"}' \
-  https://harbor.example.com/api/v2.0/trusted-issuers/<id>
+  'https://harbor.example.com/api/v2.0/trusted-issuers/<id>'
 ```
 
 When the audience is right, robot accounts and their claim rules need no change. Leftover `aud` and `iss` claim rules cannot be deleted through the claims API; those on a robot are still compared with the token, so they keep matching as long as their values do.

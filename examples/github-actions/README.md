@@ -16,8 +16,8 @@ The issuer needs the `audience` field, and an admin has to turn on the federated
 
 ```bash
 H=harbor.example.com
-AUD=<your-registry-domain-or-url>
-A=(-u admin:<password> -H "Content-Type: application/json")
+AUD='<your-registry-domain-or-url>'
+A=(-u 'admin:<password>' -H "Content-Type: application/json")
 
 # Feature gate, once per Harbor.
 curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
@@ -34,7 +34,7 @@ curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
   -d '{"rules":[{"claim_path":"repository","value":"<owner>/<repo>","robot_id":'$RB'}]}'
 ```
 
-`iss` and `aud` are not claim rules. Both belong to the issuer, and Harbor rejects them as claim paths. `repository` has to be in the issuer's `claims_supported`, and the match is exact. Add a `push` access entry next to `pull` if the job pushes images.
+`iss` and `aud` are not claim rules. Both belong to the issuer, and Harbor rejects them as claim paths. A Trusted Issuer created before Harbor 2.15.12 may have no audience after the upgrade; see [Upgrading Harbor to 2.15.12](../../deploy/helm/harbor-credential-provider/README.md#upgrading-harbor-to-21512). `repository` has to be in the issuer's `claims_supported`, and the match is exact. Add a `push` access entry next to `pull` if the job pushes images.
 
 ## Use The Example
 

@@ -65,7 +65,7 @@ JWKS variant:
 ```bash
 H=harbor.example.com
 AUD=harbor.example.com
-A=(-u admin:<password> -H "Content-Type: application/json")
+A=(-u 'admin:<password>' -H "Content-Type: application/json")
 
 # Feature gate, once per Harbor.
 curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
@@ -78,7 +78,7 @@ TI=$(jq -n --argjson k "$JWKS" --arg iss "$ISS" --arg a "$AUD" --arg n talos \
   | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
 
 RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
-  -d '{"name":"talos","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"wif","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+  -d '{"name":"talos","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"<project>","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
 
 curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
   -d '{"rules":[{"claim_path":"sub","value":"system:serviceaccount:demo:harbor-puller","robot_id":'$RB'}]}'
@@ -87,7 +87,9 @@ curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
 `audience` is a field on the Trusted Issuer, not a claim rule. Harbor rejects
 `iss` and `aud` as claim paths, because both belong to the issuer. The `sub`
 rule is an exact match, so it names one service account; the one above is the
-sample workload in this directory.
+sample workload in this directory. A Trusted Issuer created before Harbor
+2.15.12 may have no audience after the upgrade; see
+[Upgrading Harbor to 2.15.12](../../deploy/helm/harbor-credential-provider/README.md#upgrading-harbor-to-21512).
 
 Use the same audience here as everywhere else — see the **About the audience**
 note above for the three places it must match.
