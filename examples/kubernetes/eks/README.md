@@ -24,8 +24,8 @@ registry:
   # Your Harbor.
   host: harbor.example.com
   # The aud your Harbor trusted issuer expects in the token. Using the registry
-  # host is the convention; what matters is that this string and the one in
-  # Harbor's claim rule are the same.
+  # host is the convention; what matters is that this string and the audience
+  # field on the Harbor trusted issuer are the same.
   audience: harbor.example.com
 
 kubelet:
@@ -77,7 +77,9 @@ The cluster's issuer is the EKS OIDC provider URL:
 aws eks describe-cluster --name <cluster> --query cluster.identity.oidc.issuer --output text
 ```
 
-That URL is publicly reachable, so the Harbor Trusted Issuer can validate tokens online. Point it at `<issuer>/.well-known/openid-configuration` and set the audience to the value in `registry.audience`.
+That URL is publicly reachable, so the Harbor Trusted Issuer can validate tokens online. Set `openid_config_url` to `<issuer>/.well-known/openid-configuration` and the `audience` field to the value in `registry.audience`. The audience belongs to the issuer; do not add it as a claim rule. Any claim path you do use in a rule, such as `sub`, has to be in the issuer's `claims_supported`.
+
+Federated robot accounts are off until an admin enables the feature gate, so turn that on first. The commands for the gate, the issuer, the robot and the claim rule are under [Harbor Setup](../README.md#harbor-setup).
 
 ## Check It Took
 

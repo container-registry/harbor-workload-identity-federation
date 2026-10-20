@@ -48,6 +48,10 @@ helm upgrade --install harbor-credential-provider \
 
 That writes the equivalent of [`../kind-kubelet-systemd-dropin.conf`](../kind-kubelet-systemd-dropin.conf): it clears `ExecStart` and re-declares it with the flags spelled out. It is off by default because rewriting `ExecStart` is heavier than setting an environment variable, and it breaks if kind changes the kubelet command line. Use it only when the flags are actually missing.
 
+## Harbor Side
+
+Federated robot accounts are off until an admin enables the feature gate, and the Trusted Issuer needs its `audience` field. The commands are under [Harbor Setup](../README.md#harbor-setup). A Harbor on plain HTTP also needs a `hosts.toml` in every node container, described under [Plain HTTP and non-standard ports](../README.md#plain-http-and-non-standard-ports). A Harbor on TLS needs none.
+
 ## Then Pull Something
 
 ```bash

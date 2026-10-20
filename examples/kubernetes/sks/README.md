@@ -39,7 +39,7 @@ helm upgrade --install harbor-credential-provider \
 kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
 
-The Harbor side is the same as on any other cluster: see [Harbor Setup](../README.md#harbor-setup).
+The Harbor side is the same as on any other cluster: see [Harbor Setup](../README.md#harbor-setup). Federated robot accounts are off until an admin enables the feature gate, and the Trusted Issuer needs its `audience` field; both are covered there.
 
 ## Confirm
 

@@ -32,6 +32,10 @@ kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 microk8s kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
 ```
 
+## Harbor Side
+
+Federated robot accounts are off until an admin enables the feature gate, and the Trusted Issuer needs its `audience` field. The gate, the issuer, the robot and the claim rule are under [Harbor Setup](../README.md#harbor-setup).
+
 ## Snap Refreshes
 
 This is the part to plan for. A snap refresh rewrites `/var/snap/microk8s/current/args/kubelet` from the new revision's defaults, so the two arguments are lost and pulls from Harbor start failing. `/var/snap/microk8s/common` is untouched, so the binary and the config survive; only the arguments go.

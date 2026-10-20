@@ -57,26 +57,37 @@ inline JWKS, so Harbor never has to call the API server.
 kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)"
 ```
 
-```text
-Issuer:   <cluster-service-account-issuer>
-Audience: harbor.example.com
-JWKS:     <inline keys from the command above>
+Enable the feature gate once (admin), then create the issuer, the robot and the
+claim rule. The full flow is under
+[Harbor Setup](../kubernetes/README.md#harbor-setup); on Talos use the offline
+JWKS variant:
+
+```bash
+H=harbor.example.com
+AUD=harbor.example.com
+A=(-u admin:<password> -H "Content-Type: application/json")
+
+# Feature gate, once per Harbor.
+curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
+  -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
+
+JWKS=$(kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)")
+ISS=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
+TI=$(jq -n --argjson k "$JWKS" --arg iss "$ISS" --arg a "$AUD" --arg n talos \
+  '{name:$n,issuer:$iss,offline_validation:true,jwks_keys:$k,audience:$a}' \
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+
+RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
+  -d '{"name":"talos","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"wif","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+
+curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
+  -d '{"rules":[{"claim_path":"sub","value":"system:serviceaccount:demo:harbor-puller","robot_id":'$RB'}]}'
 ```
 
-Create a federated **robot account with pull permission** and a claim rule that
-pins the workload identity on `sub`:
-
-```text
-iss == <cluster-service-account-issuer>
-aud == harbor.example.com
-sub == system:serviceaccount:<namespace>:<service-account>
-```
-
-For the sample workload in this directory:
-
-```text
-sub == system:serviceaccount:demo:harbor-puller
-```
+`audience` is a field on the Trusted Issuer, not a claim rule. Harbor rejects
+`iss` and `aud` as claim paths, because both belong to the issuer. The `sub`
+rule is an exact match, so it names one service account; the one above is the
+sample workload in this directory.
 
 Use the same audience here as everywhere else — see the **About the audience**
 note above for the three places it must match.
