@@ -334,9 +334,9 @@ When the audience is right, robot accounts and their claim rules need no change.
 
 The audience can be set only once. Another `PUT` answers `cannot modify audience after it is set`, so a wrong value means deleting the Trusted Issuer and creating it again. Harbor refuses to delete a Trusted Issuer that still has robots (`Please delete the associated robots before deleting the trusted issuer`), and deleting a robot deletes its claim rules with it. So:
 
-1. Record each robot's permissions and its claim rules (`GET /api/v2.0/trusted-issuers/<id>/claims`).
+1. Record the Trusted Issuer's settings (`GET /api/v2.0/trusted-issuers/<id>`: name, issuer or OpenID configuration URL, validation mode, JWKS, project), each robot's permissions, and the claim rules (`GET /api/v2.0/trusted-issuers/<id>/claims`).
 2. Delete the robots, then the Trusted Issuer.
-3. Create the Trusted Issuer with the right `audience`.
+3. Create the Trusted Issuer again from the recorded settings, with the right `audience`.
 4. Create the robots again with `trusted_issuer_id` set to the new issuer and the same permissions.
 5. Add their claim rules again against the new robot IDs, leaving out `aud` and `iss`.
 
