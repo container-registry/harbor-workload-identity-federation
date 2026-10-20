@@ -2,8 +2,13 @@
 #
 # Set up the Harbor side of a federated robot pull: a Trusted Issuer pointed at
 # a cluster's OIDC discovery document, a robot account bound to it, and the
-# claim rules that decide which service account token is allowed to become that
+# claim rule that decides which service account token is allowed to become that
 # robot.
+#
+# Needs Harbor 2.15.12 or newer, where the audience is a field of the Trusted
+# Issuer and iss and aud are no longer accepted as claim rules. An existing
+# Trusted Issuer without an audience, left over from an upgrade, gets
+# OIDC_AUDIENCE set on it.
 #
 # This is the half that cannot be tested in a local cluster, so it is scripted
 # for the cloud runs that use a real Harbor. Nothing here touches Kubernetes.
@@ -18,13 +23,13 @@
 #   HARBOR_USER       a user that can administer the project
 #   HARBOR_PASS       its password, read from the environment and never logged
 #   HARBOR_PROJECT    the project the robot can pull from
-#   OIDC_ISSUER       the cluster's issuer URL, for the iss claim rule
+#   OIDC_ISSUER       the cluster's issuer URL
 #   OIDC_DISCOVERY    default "${OIDC_ISSUER}/.well-known/openid-configuration"
-#   OIDC_AUDIENCE     default the HARBOR_URL host
+#   OIDC_AUDIENCE     default the HARBOR_URL host; the Trusted Issuer's
+#                     audience, equal to the chart's registry.audience
 #   SUBJECT           system:serviceaccount:<namespace>:<name>
 #   IDP_NAME          default "${HARBOR_PROJECT}-issuer"
 #   ROBOT_NAME        default "${HARBOR_PROJECT}-puller"
-#   MATCH_AUDIENCE    default 1; set to 0 to skip the aud claim rule
 #
 # Needs: curl, jq.
 
@@ -53,7 +58,6 @@ API="${HARBOR_URL%/}/api/v2.0"
 OIDC_AUDIENCE="${OIDC_AUDIENCE:-${HARBOR_HOST}}"
 IDP_NAME="${IDP_NAME:-${HARBOR_PROJECT}-issuer}"
 ROBOT_NAME="${ROBOT_NAME:-${HARBOR_PROJECT}-puller}"
-MATCH_AUDIENCE="${MATCH_AUDIENCE:-1}"
 
 # Credentials go to curl over stdin rather than on the command line, so they do
 # not show up in the process list of a shared machine or in a shell history.
@@ -84,7 +88,7 @@ project_id() {
 }
 
 idp_id() {
-  api GET "/federated-idps" \
+  api GET "/trusted-issuers?page_size=100" \
     | jq -r --arg n "${IDP_NAME}" '.[]? | select(.name == $n) | .id' | head -1
 }
 
@@ -110,7 +114,7 @@ cmd_setup() {
   # message, rather than later as a token that will not validate.
   echo "checking Harbor can reach ${discovery}"
   local ping
-  ping=$(api POST "/federated-idps/openid-config" \
+  ping=$(api POST "/trusted-issuers/openid-config" \
     "$(jq -nc --arg u "${discovery}" '{openid_config_url: $u}')")
   local derived
   derived=$(echo "${ping}" | jq -r '.issuer // empty')
@@ -128,13 +132,51 @@ cmd_setup() {
   local iid
   iid=$(idp_id)
   if [ -n "${iid}" ]; then
-    echo "issuer:    ${IDP_NAME} (id ${iid}, already there)"
+    # The lookup is by name only, so make sure it is the issuer asked for before
+    # reusing it or writing to it.
+    local existing aud have_iss
+    existing=$(api GET "/trusted-issuers/${iid}")
+    have_iss=$(echo "${existing}" | jq -r '.issuer // empty')
+    if [ "${have_iss%/}" != "${OIDC_ISSUER%/}" ]; then
+      red "issuer ${IDP_NAME} is for ${have_iss}, expected ${OIDC_ISSUER%/}; pick another IDP_NAME"
+      exit 1
+    fi
+    # The audience is immutable once set, but an issuer created before Harbor
+    # 2.15.12 has none and rejects every token until it is set once.
+    aud=$(echo "${existing}" | jq -r '.audience // empty')
+    if [ -z "${aud}" ]; then
+      # Legacy aud claim rules cannot be deleted and are still compared with the
+      # token, so one with another value would keep its robot from matching
+      # after the audience is set for good. Stop before that happens.
+      local stale
+      stale=$(api GET "/trusted-issuers/${iid}/claims?claim_path=aud" \
+        | jq -r --arg a "${OIDC_AUDIENCE}" '[.[]? | select(.value != $a) | "\(.value) (robot \(.robot_id))"] | join(", ")')
+      if [ -n "${stale}" ]; then
+        red "issuer ${IDP_NAME} has aud claim rules for another audience: ${stale}"
+        echo "set OIDC_AUDIENCE to that audience, or recreate the issuer and its robots" >&2
+        exit 1
+      fi
+      local code
+      code=$(api_code PUT "/trusted-issuers/${iid}" \
+        "$(jq -nc --arg a "${OIDC_AUDIENCE}" '{audience: $a}')")
+      case "${code}" in
+        2*) green "issuer:    ${IDP_NAME} (id ${iid}, audience ${OIDC_AUDIENCE} set)" ;;
+        *)  red "setting the audience on ${IDP_NAME} failed (HTTP ${code})"; exit 1 ;;
+      esac
+    elif [ "${aud}" != "${OIDC_AUDIENCE}" ]; then
+      red "issuer ${IDP_NAME} has audience ${aud}, expected ${OIDC_AUDIENCE}; the audience cannot be changed"
+      exit 1
+    else
+      echo "issuer:    ${IDP_NAME} (id ${iid}, already there)"
+    fi
   else
-    api POST "/federated-idps" "$(jq -nc \
+    api POST "/trusted-issuers" "$(jq -nc \
       --arg name "${IDP_NAME}" \
       --arg url "${discovery}" \
+      --arg aud "${OIDC_AUDIENCE}" \
       --argjson pid "${pid}" \
-      '{name: $name, openid_config_url: $url, offline_validation: false, project_id: $pid}')" \
+      '{name: $name, openid_config_url: $url, offline_validation: false,
+        audience: $aud, project_id: $pid}')" \
       >/dev/null
     iid=$(idp_id)
     [ -n "${iid}" ] || { red "creating the trusted issuer failed"; exit 1; }
@@ -152,7 +194,7 @@ cmd_setup() {
       --arg name "${ROBOT_NAME}" \
       --arg ns "${HARBOR_PROJECT}" \
       --argjson iid "${iid}" \
-      '{name: $name, level: "project", duration: -1, federatedidp_id: $iid,
+      '{name: $name, level: "project", duration: -1, trusted_issuer_id: $iid,
         permissions: [{kind: "project", namespace: $ns,
                        access: [{resource: "repository", action: "pull"},
                                 {resource: "repository", action: "list"}]}]}')" \
@@ -162,30 +204,23 @@ cmd_setup() {
     green "robot:     ${ROBOT_NAME} (id ${rid}, created)"
   fi
 
-  # The claim rules are the authorization decision. Without a sub rule any token
+  # The claim rule is the authorization decision. Without a sub rule any token
   # this issuer signs would become the robot, which is every service account in
-  # the cluster.
+  # the cluster. iss and aud are matched by the Trusted Issuer itself; Harbor
+  # rejects them as claim rules.
   local rules
   rules=$(jq -nc \
-    --arg iss "${OIDC_ISSUER%/}" \
-    --arg aud "${OIDC_AUDIENCE}" \
     --arg sub "${SUBJECT}" \
     --argjson rid "${rid}" \
-    --argjson iid "${iid}" \
-    --argjson matchaud "${MATCH_AUDIENCE}" \
-    '{rules: ([{claim_path: "iss", value: $iss, robot_id: $rid, identity_provider_id: $iid},
-               {claim_path: "sub", value: $sub, robot_id: $rid, identity_provider_id: $iid}]
-              + (if $matchaud == 1
-                 then [{claim_path: "aud", value: $aud, robot_id: $rid, identity_provider_id: $iid}]
-                 else [] end))}')
+    '{rules: [{claim_path: "sub", value: $sub, robot_id: $rid}]}')
 
   local code
-  code=$(api_code POST "/federated-idps/${iid}/claims" "${rules}")
+  code=$(api_code POST "/trusted-issuers/${iid}/claims" "${rules}")
   case "${code}" in
-    2*) green "claims:    iss, sub$([ "${MATCH_AUDIENCE}" = 1 ] && echo ", aud") bound to robot ${rid}" ;;
+    2*) green "claims:    sub bound to robot ${rid}" ;;
     409) echo "claims:    already there (HTTP 409)" ;;
-    *)  red "adding claim rules failed (HTTP ${code})"
-        api GET "/federated-idps/${iid}/claims" >&2 || true
+    *)  red "adding the claim rule failed (HTTP ${code})"
+        api GET "/trusted-issuers/${iid}/claims" >&2 || true
         exit 1 ;;
   esac
 
@@ -196,15 +231,15 @@ cmd_setup() {
 
 cmd_status() {
   echo "=== trusted issuers ==="
-  api GET "/federated-idps" | jq '[.[]? | {id, name, issuer, project_id}]'
+  api GET "/trusted-issuers?page_size=100" | jq '[.[]? | {id, name, issuer, audience, project_id}]'
   local iid
   iid=$(idp_id)
   if [ -n "${iid}" ]; then
     echo "=== claim rules on ${IDP_NAME} ==="
-    api GET "/federated-idps/${iid}/claims" | jq '[.[]? | {claim_path, value, robot_id}]'
+    api GET "/trusted-issuers/${iid}/claims" | jq '[.[]? | {claim_path, value, robot_id}]'
   fi
   echo "=== robots ==="
-  api GET "/robots?page_size=100" | jq '[.[]? | {id, name, level, federatedidp_id, disable}]'
+  api GET "/robots?page_size=100" | jq '[.[]? | {id, name, level, trusted_issuer_id, disable}]'
 }
 
 # Order matters: the robot references the issuer, so it goes first.
@@ -218,7 +253,7 @@ cmd_teardown() {
   fi
   iid=$(idp_id)
   if [ -n "${iid}" ]; then
-    echo "deleting trusted issuer ${iid} ($(api_code DELETE "/federated-idps/${iid}"))"
+    echo "deleting trusted issuer ${iid} ($(api_code DELETE "/trusted-issuers/${iid}"))"
   else
     echo "no trusted issuer named ${IDP_NAME}"
   fi

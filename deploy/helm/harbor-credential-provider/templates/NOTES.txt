@@ -78,6 +78,11 @@ Don't forget to apply the RBAC for audience token requests:
   Create equivalent RBAC that grants request-serviceaccounts-token-audience on {{ include "harbor-credential-provider.audience" . }} to system:nodes, or enable nodeAudienceRbac.create.
 {{- end }}
 
+In Harbor 2.15.12 or newer, the Trusted Issuer for this cluster must have its
+audience field set to {{ include "harbor-credential-provider.audience" . }}. Do not add iss or aud claim
+rules; Harbor rejects them. A Trusted Issuer upgraded from an older Harbor may
+have no audience and reject every token until it is set.
+
 To verify image pulling works:
 
   kubectl run test --image={{ .Values.registry.host }}/library/nginx:latest --restart=Never
