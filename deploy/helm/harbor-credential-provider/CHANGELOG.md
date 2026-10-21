@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/container-registry/harbor-workload-identity-federation/compare/chart-v0.4.0...chart-v0.4.1) (2026-10-21)
+
+
+### Documentation
+
+* Note the repo rename and how to fix a wrong Trusted Issuer audience ([#65](https://github.com/container-registry/harbor-workload-identity-federation/issues/65)) ([c2030bf](https://github.com/container-registry/harbor-workload-identity-federation/commit/c2030bf3c7961fadef023cf8b18186a5fc254877)), closes [#64](https://github.com/container-registry/harbor-workload-identity-federation/issues/64)
+* Set the audience on the Trusted Issuer for Harbor 2.15.12 ([#62](https://github.com/container-registry/harbor-workload-identity-federation/issues/62)) ([ba55161](https://github.com/container-registry/harbor-workload-identity-federation/commit/ba55161dcffe6f24b1f0fedc501ba1f7523fc979)), closes [#61](https://github.com/container-registry/harbor-workload-identity-federation/issues/61)
+* Use the current repo name in the token sample and fix the setup blocks ([#67](https://github.com/container-registry/harbor-workload-identity-federation/issues/67)) ([1b3c19d](https://github.com/container-registry/harbor-workload-identity-federation/commit/1b3c19d4042bf01fc40fc419e936eb6c8c1419cd)), closes [#66](https://github.com/container-registry/harbor-workload-identity-federation/issues/66)
+
 ## [0.4.0](https://github.com/container-registry/harbor-workload-identity-federation/compare/chart-v0.3.0...chart-v0.4.0) (2026-10-08)
 
 
