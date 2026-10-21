@@ -2,6 +2,8 @@
 
 Repository with examples demonstrating how to use Harbor/8gears Container Registry with Federated Robot Accounts, eliminating the need for static secrets in CI/CD pipelines and Kubernetes.
 
+![Kubernetes credential provider: secretless image pull flow](images/kubernetes-credential-provider-secretless-image-pull-flow.svg)
+
 ## Overview
 
 **Federated Robot Accounts** allow Harbor to authenticate clients using short-lived JWTs instead of static robot account secrets. By establishing a trust relationship with an external Identity Provider (like GitHub Actions, GitLab CI, or Kubernetes), Harbor can validate tokens and map them to internal robot accounts based on specific claims.
