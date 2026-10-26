@@ -97,7 +97,7 @@ On `kind`, check that the live kubelet command line inside the node container ha
 | Key | Default | Description |
 |-----|---------|-------------|
 | `kubelet.configure` | `true` | Point kubelet at the provider. Turn off if you manage kubelet flags yourself. |
-| `kubelet.restart` | by profile: `false` on `k3d`, `true` elsewhere | Restart kubelet after installing, so the node works without a manual roll. Left empty (`null`), the profile decides. A node with no `systemctl` fails the install once with the next step in the log instead of crash-looping. |
+| `kubelet.restart` | by profile: `false` on `k3d`, `true` elsewhere | Restart kubelet after installing, so the node works without a manual roll. Left empty (`null`), the profile decides. A node with no `systemctl` fails the install once with the next step in the log. With `installer.sleep` on, the default, the pod then stays up and not Ready instead of crash-looping; with it off, the container exits and the DaemonSet restarts it. |
 | `kubelet.serviceName` | by profile | systemd unit to restart. |
 | `kubelet.systemdDropInPath` | by profile | Drop-in written for `generic`, `kind`, `gke`, `sks`, and `custom`. On `sks` its file name has to sort after `sks.conf`. |
 | `kubelet.k3sConfigDropInPath` | by profile | Drop-in written for `k3s` and `k3d`. |

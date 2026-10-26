@@ -67,8 +67,13 @@ on each node to use the installed credential provider paths for your profile:
 
 IMPORTANT: A k3d node is a container running k3s as PID 1, with no init system
 the installer could ask for a restart, so the k3d profile leaves it to you. k3s
-reads the drop-in only when it starts. Once rollout status reports every node
+reads the drop-in only when it starts.
+{{- if .Values.readinessProbe.enabled }} Once rollout status reports every node
 done, restart the cluster from the machine running k3d:
+{{- else }} The readiness probe is off, so rollout
+status does not wait for the installer. Once every installer pod has logged
+"Installation complete", restart the cluster from the machine running k3d:
+{{- end }}
 
   k3d cluster stop <cluster> && k3d cluster start <cluster>
 

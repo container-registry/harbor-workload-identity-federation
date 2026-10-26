@@ -710,15 +710,23 @@ const nsenterExecNotFound = 127
 var k3dNodeName = regexp.MustCompile(`^k3d-(.+)-(?:server|agent)-[0-9]+$`)
 
 func restartKubelet(opts options) error {
-	return restartKubeletWith(opts, systemctl)
+	return restartKubeletWith(opts, systemctl, systemctlQuiet)
 }
 
 // restartKubeletWith takes systemctl as a parameter so a test can stand in for
-// a node that has none.
-func restartKubeletWith(opts options, systemctl func(args ...string) error) error {
+// a node that has none. probe is the quiet variant used to check that
+// systemctl exists at all.
+func restartKubeletWith(opts options, systemctl, probe func(args ...string) error) error {
 	if !opts.RestartKubelet {
 		fmt.Printf("[WARN] Kubelet restart disabled. %s\n", manualRestartSteps(opts))
 		return nil
+	}
+
+	// Before service discovery: rke2 asks systemd which unit runs, and a
+	// missing systemctl reads there as "no unit running", which would hide the
+	// one error a retry cannot fix behind a role-detection error.
+	if err := probe("--version"); errors.Is(err, errNoSystemctl) {
+		return restartFailed(opts, err)
 	}
 
 	services, err := kubeletServices(opts, systemdRunsUnit)

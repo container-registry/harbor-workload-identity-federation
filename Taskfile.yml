@@ -295,6 +295,8 @@ tasks:
         says "profile k3d with kubelet.restart=true" "kubelet restart included" \
           --set profile=k3d --set kubelet.restart=true
         silent_on "profile k3s" "k3d cluster stop" --set profile=k3s
+        says "profile k3d without a readiness probe" "status does not wait for the installer" \
+          --set profile=k3d --set readinessProbe.enabled=false
         says "the defaults" "The chart created"
         says "nodeAudienceRbac.create=false" "Create equivalent RBAC" \
           --set nodeAudienceRbac.create=false

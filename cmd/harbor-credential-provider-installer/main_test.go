@@ -1321,7 +1321,7 @@ func TestK3dInstallIsReadyWithoutARestart(t *testing.T) {
 
 	calls := 0
 	noSystemctl := func(...string) error { calls++; return errNoSystemctl }
-	restart := func(o options) error { return restartKubeletWith(o, noSystemctl) }
+	restart := func(o options) error { return restartKubeletWith(o, noSystemctl, noSystemctl) }
 
 	for run := 1; run <= 2; run++ {
 		if err := install(opts, restart); err != nil {
@@ -1378,6 +1378,14 @@ func TestRestartOnANodeWithoutSystemctlNamesTheNextStep(t *testing.T) {
 			nodeName: "worker-1",
 			want:     []string{"RESTART_KUBELET=false", "Restart or roll nodes"},
 		},
+		{
+			// Service discovery asks systemd which unit runs, and reads a
+			// missing systemctl as "not running" unless it is checked first.
+			name:     "rke2 with no service name",
+			profile:  "rke2",
+			nodeName: "rke2-node-1",
+			want:     []string{"RESTART_KUBELET=false", "Restart or roll nodes"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1389,7 +1397,7 @@ func TestRestartOnANodeWithoutSystemctlNamesTheNextStep(t *testing.T) {
 			opts.ConfigureKubelet = true
 			opts.K3sConfigDropInPath = "/etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml"
 
-			err := install(opts, func(o options) error { return restartKubeletWith(o, missing) })
+			err := install(opts, func(o options) error { return restartKubeletWith(o, missing, missing) })
 			if !errors.Is(err, errNoSystemctl) {
 				t.Fatalf("install() error = %v, want errNoSystemctl", err)
 			}

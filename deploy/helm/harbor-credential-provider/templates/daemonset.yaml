@@ -47,15 +47,16 @@ spec:
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
         env:
-        {{- include "harbor-credential-provider.installerEnv" . | nindent 8 }}
-        - name: SLEEP_FOREVER
-          value: {{ .Values.installer.sleep | quote }}
         {{- /* Only names the node in the restart instructions the installer
-               logs, so it stays out of the install ID like SLEEP_FOREVER. */}}
+               logs, so it stays out of the install ID like SLEEP_FOREVER.
+               First, so an extraEnv entry of the same name still wins. */}}
         - name: NODE_NAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        {{- include "harbor-credential-provider.installerEnv" . | nindent 8 }}
+        - name: SLEEP_FOREVER
+          value: {{ .Values.installer.sleep | quote }}
         - name: INSTALLED_MARKER
           value: {{ .Values.installer.installedMarker | quote }}
         - name: INSTALL_ID
