@@ -102,7 +102,7 @@ curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
   -d '{"rules":[{"claim_path":"sub","value":"system:serviceaccount:default:default","robot_id":'$RB'}]}'
 ```
 
-Send the robot's real ID. Harbor stores a rule without `robot_id` as an issuer-wide rule that every token from the issuer has to match, with a `201` and no warning, so a failed robot create followed by this call locks out every other service account of the cluster. The snippets read IDs with `jq -r '.id // empty'`: a failed create leaves the variable empty, and the next request is rejected with `422` instead of storing that rule.
+Send the robot's real ID. Harbor stores a rule without `robot_id` as an issuer-wide rule that every token from the issuer has to match, with a `201` and no warning, so a failed robot create followed by this call locks out every other service account of the cluster. The snippets read IDs with `jq -r '.id // empty'`: a failed create leaves the variable empty, the claim body becomes invalid JSON, and Harbor rejects it with `422` instead of storing that rule. Stop and fix the failed create before going on.
 
 The `iss` and `aud` claims are not rules. Both belong to the issuer, and Harbor rejects them as claim paths (`400 claim_path 'iss' is not accepted`). Rules cover the other claims in the token, such as `sub`, `repository`, or a nested path like `kubernetes.io.namespace`. On a Trusted Issuer using online validation, each claim path has to appear in the issuer's `claims_supported`.
 

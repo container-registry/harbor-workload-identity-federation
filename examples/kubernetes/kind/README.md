@@ -64,7 +64,7 @@ kubectl apply -f examples/kubernetes/pod-example.yaml
 
 ## Audience
 
-kind needs nothing passed at cluster creation for this. kubelet's request for a Harbor token is authorized by the node audience RBAC the chart creates. The API server's `--api-audiences` governs the tokens it accepts, not the ones it issues, so your registry does not belong there. Putting the registry there makes Harbor tokens valid cluster credentials and stops keyless Flux pulls; see [The Three Things That Have To Line Up](../README.md#the-three-things-that-have-to-line-up).
+kind needs nothing passed at cluster creation for this. kubelet's request for a Harbor token is authorized by the node audience RBAC the chart creates. The API server's `--api-audiences` lists the audiences it accepts on tokens presented to it, and doubles as the default audience of tokens issued without one. It plays no part in kubelet's request for the registry audience. Your registry does not belong there. Putting the registry there makes Harbor tokens valid cluster credentials and stops keyless Flux pulls; see [The Three Things That Have To Line Up](../README.md#the-three-things-that-have-to-line-up).
 
 For Harbor to validate tokens from a local kind cluster, the cluster issuer has to be reachable from Harbor, or the Trusted Issuer has to be configured with inline JWKS. The [Talos example](../../talos/) has the offline JWKS recipe, which applies here too.
 

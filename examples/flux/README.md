@@ -21,7 +21,7 @@ They use `harbor.example.com` as the registry and audience and `platform` as the
 
 ## Prerequisites
 
-- Kubernetes 1.34 or newer.
+- Kubernetes 1.35.2 or newer, the minimum Flux 2.10 supports. `harbor-credential-provider` on its own needs 1.34.
 - `harbor-credential-provider` installed on the nodes, with `registry.audience` equal to the registry host. Follow the page for your distribution under [`../kubernetes/`](../kubernetes/). Flux's own pulls do not need it; the workload's do.
 - The registry is **not** in the API server's `--api-audiences`. See [Audience](#audience).
 - Flux CLI v2.10.0 or newer. v2.10.0 installs source-controller v1.10.1, kustomize-controller v1.10.1 and image-reflector-controller v1.3.0.
@@ -36,7 +36,17 @@ kubectl apply -f examples/flux/flux-object-identity-rbac.yaml
 
 Flux 2.10 removed `create` on `serviceaccounts/token` from the default controller RBAC ([fluxcd/flux2#6139](https://github.com/fluxcd/flux2/pull/6139)). Without the second command every `OCIRepository` and `ImageRepository` with a `serviceAccountName` fails with `cannot create resource "serviceaccounts/token"`. kustomize-controller and helm-controller are bound to `cluster-admin` and need nothing. The `ObjectLevelWorkloadIdentity` feature gate is retired in 2.10; the feature is always on.
 
-Bootstrapping instead of `flux install`? Commit the RBAC file next to `gotk-components.yaml` so it survives upgrades.
+Bootstrapping instead of `flux install`? Commit the RBAC file next to `gotk-components.yaml` and add it to the `resources` list in that directory's `kustomization.yaml`. The list is explicit, so a file that is only committed there is never applied:
+
+```yaml
+# clusters/<cluster>/flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+  - flux-object-identity-rbac.yaml
+```
 
 ## 2. Harbor
 
@@ -97,13 +107,14 @@ curl -s "${A[@]}" "https://$H/api/v2.0/trusted-issuers/$TI/claims" | jq -c '.[] 
 
 ## 3. Publish the manifests
 
-Pushing is the publisher's job, typically CI, with a robot that has push access. It is not part of the keyless path in the cluster. A [GitHub Actions](../github-actions/) or [GitLab CI](../gitlab-ci/) job can do it keyless as well.
+Pushing is the publisher's job, typically CI, with a robot that has push access. It is not part of the keyless path in the cluster, so it needs credentials: `PUSH_USER` and `PUSH_SECRET` below are a robot with `push` on the project. A [GitHub Actions](../github-actions/) or [GitLab CI](../gitlab-ci/) job can do it keyless as well.
 
 ```bash
 flux push artifact oci://harbor.example.com/platform/podinfo-deploy:v1 \
   --path=examples/flux/apps \
   --source="$(git config --get remote.origin.url)" \
-  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)" \
+  --creds="$PUSH_USER:$PUSH_SECRET"
 ```
 
 Do not name the repository `manifests`. Harbor answers `400 Bad Request` on the first blob request for `<project>/manifests`.
@@ -171,7 +182,7 @@ With the registry in `--api-audiences`, every default ServiceAccount token carri
 
 ## Tested
 
-On 2026-10-26 with Flux v2.10.0 (source-controller v1.10.1, kustomize-controller v1.10.1, image-reflector-controller v1.3.0), k3d v5.9.0 running k3s v1.35.5 with no `--api-audiences` argument, chart `harbor-credential-provider` 0.4.0 with `profile=k3d`, and Harbor 2.16.0 with system-level robots. The `OCIRepository` and `ImageRepository` went Ready, the `Kustomization` applied, the podinfo pod ran with no `imagePullSecrets`, and the Harbor audit log attributed the artifact pull and the image pull to their robots. The `credential.auth.fluxcd.io/username` variant was checked too. The test Harbor answered `404` to a manifest request for the `podinfo:6.15.0` tag, admin included, while serving the same image by digest, so the pushed artifact referenced `podinfo:6.15.0@sha256:ec73780a...`. The token was mapped to the right robot either way; the `404` was a broken tag in that registry, not an authentication failure.
+On 2026-10-26 with Flux v2.10.0 (source-controller v1.10.1, kustomize-controller v1.10.1, image-reflector-controller v1.3.0), k3d v5.9.0 running k3s v1.35.5 with no `--api-audiences` argument, chart `harbor-credential-provider` 0.4.0 with `profile=k3d`, and Harbor 2.16.0 with system-level robots. The `OCIRepository` and `ImageRepository` went Ready, the `Kustomization` applied, the podinfo pod ran with no `imagePullSecrets`, and the Harbor audit log attributed the artifact pull and the image pull to their robots. The `credential.auth.fluxcd.io/username` variant was checked too. One deviation from the files here: the test Harbor answered `404` to a manifest request for the `podinfo:6.15.0` tag, admin included, while serving the same image by digest. So the artifact pushed in the test referenced `podinfo:6.15.0@sha256:ec73780a...`, and a pull by tag alone, as in [`apps/podinfo.yaml`](apps/podinfo.yaml), was not verified in that run. Authentication does not depend on it: the registry token Harbor issued for the `podinfo` ServiceAccount carried `pull` on the repository before and after the change. If your copy of the image has a digest you want to pin, `image: <host>/<project>/podinfo:6.15.0@sha256:<digest>` works the same way.
 
 On k3d, install the chart with `--set kubelet.restart=false` and run `docker restart k3d-<cluster>-server-0` afterwards until [#32](https://github.com/container-registry/harbor-workload-identity-federation/issues/32) is fixed.
 

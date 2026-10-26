@@ -44,7 +44,7 @@ A Harbor on TLS needs no such file.
 
 The node has to be allowed to ask for a token with your Harbor audience. That permission is the node audience RBAC, which the chart creates by default, or apply it by hand from [`../rbac-audience.yaml`](../rbac-audience.yaml).
 
-Nothing goes in `kube-apiserver-arg` for this. `--api-audiences` lists the audiences the API server accepts on tokens presented to it, and it has no say in which audiences it hands out. Putting the registry there makes Harbor tokens valid cluster credentials and stops keyless Flux pulls; see [The Three Things That Have To Line Up](../README.md#the-three-things-that-have-to-line-up).
+Nothing goes in `kube-apiserver-arg` for this. `--api-audiences` lists the audiences the API server accepts on tokens presented to it, and the same list becomes the audience of every token requested without one. It plays no part in kubelet's request for the registry audience. Putting the registry there makes Harbor tokens valid cluster credentials and stops keyless Flux pulls; see [The Three Things That Have To Line Up](../README.md#the-three-things-that-have-to-line-up).
 
 ## Check It Took
 
