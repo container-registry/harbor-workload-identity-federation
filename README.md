@@ -31,7 +31,7 @@ The repository used to be called `federated-idp-examples`. GitHub redirects the 
 - GitHub Actions
 - GitLab CI
 - Kubernetes 1.34+ (via Service Account tokens)
-- FluxCD
+- FluxCD 2.10+ (`OCIRepository` and `ImageRepository` with Kubernetes ServiceAccount tokens, see [`examples/flux/`](examples/flux/))
 - Forgejo Actions (TBD)
 
 ---
@@ -57,7 +57,7 @@ export INSTALLER_IMAGE="${REGISTRY_ADDRESS}/${PROJECT_NAME}/harbor-credential-pr
 export HARBOR_REGISTRY=harbor.example.com
 
 # Audience Harbor expects in service account tokens. Use the exact value in the `audience` field of the Harbor Trusted Issuer.
-export HARBOR_AUDIENCE=https://harbor.example.com
+export HARBOR_AUDIENCE=harbor.example.com
 ```
 
 Install from a local checkout:
@@ -379,11 +379,17 @@ To inspect the JWT token contents during workflow execution:
 ```yaml
 - name: Debug JWT Token
   run: |
+    # JWT segments are unpadded base64url; base64 -d wants padded standard base64.
+    jwt_part() {
+      p=$(echo "$TOKEN" | cut -d'.' -f"$1" | tr '_-' '/+')
+      case $(( ${#p} % 4 )) in 2) p="$p==" ;; 3) p="$p=" ;; esac
+      echo "$p" | base64 -d | jq .
+    }
     echo "=== JWT Header ==="
-    echo "$TOKEN" | cut -d'.' -f1 | base64 -d 2>/dev/null | jq .
+    jwt_part 1
     echo ""
     echo "=== JWT Payload ==="
-    echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+    jwt_part 2
 ```
 
 ### Example JWT Token
@@ -594,7 +600,7 @@ This section describes how to set up a local k3s/k3d cluster with Kubernetes Ima
 
 > For other distributions, [`examples/kubernetes/`](examples/kubernetes/) has a page each for kubeadm, EKS, GKE, AKS, k3s, k3d, kind, RKE2, MicroK8s and Exoscale SKS, covering where each one keeps its kubelet arguments. OpenShift has a page too, saying why it is not supported. [`scripts/verify-node-install.sh`](scripts/verify-node-install.sh) checks whether a node is actually set up.
 >
-> kind is the only distribution tested end to end, on Kubernetes 1.34. The other pages come from each distribution's docs and from what the installer writes. The paths and the mechanisms are right, but nobody has watched a pull succeed on them yet. Run the verify script after installing, and tell us if a page is wrong.
+> kind is tested end to end on Kubernetes 1.34, and k3d on k3s 1.35 together with the [Flux example](examples/flux/), installed with `kubelet.restart=false` and a node restart until [#32](https://github.com/container-registry/harbor-workload-identity-federation/issues/32) is fixed. The other pages come from each distribution's docs and from what the installer writes. The paths and the mechanisms are right, but nobody has watched a pull succeed on them yet. Run the verify script after installing, and tell us if a page is wrong.
 
 ### How It Works
 
@@ -654,17 +660,17 @@ AUD=harbor.example.com
 A=(-u 'admin:<password>' -H "Content-Type: application/json")
 
 curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
-  -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
+  -d '{"enable_commercial_federated_robot_accounts":true}'
 
 JWKS=$(kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)")
 ISS=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
 TI=$(jq -n --argjson k "$JWKS" --arg iss "$ISS" --arg a "$AUD" --arg n k3d \
   '{name:$n,issuer:$iss,offline_validation:true,jwks_keys:$k,audience:$a}' \
-  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r '.id // empty')
 
 # 5. Robot account tied to the issuer, then its claim rule
 RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
-  -d '{"name":"k3d","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"library","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+  -d '{"name":"k3d","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"library","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r '.id // empty')
 curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
   -d '{"rules":[{"claim_path":"sub","value":"system:serviceaccount:default:default","robot_id":'$RB'}]}'
 
@@ -778,7 +784,7 @@ spec:
 
 The commands are in the Quick Start above. In short:
 
-1. **Turn on the feature gate** (admin, once): `PUT /api/v2.0/configurations` with `enable_commercial_federated_robot_accounts` and `enable_project_federated_robot_accounts` set to `true`. Every federated robot call returns 403 until then.
+1. **Turn on the feature gate** (admin, once): `PUT /api/v2.0/configurations` with `enable_commercial_federated_robot_accounts` set to `true`. Every federated robot call returns 403 until then. The robot here is system-level; a project-level robot (`level: project`) also needs `enable_project_federated_robot_accounts`.
 
 2. **Create a Trusted Issuer in Harbor:**
    - Issuer: the value of `kubectl get --raw /.well-known/openid-configuration | jq -r .issuer`
@@ -787,10 +793,10 @@ The commands are in the Quick Start above. In short:
 
 3. **Create the robot account** with `trusted_issuer_id` set to the issuer's ID and pull permission on the target project.
 
-4. **Add a claim rule** through `POST /api/v2.0/trusted-issuers/<id>/claims`, with the robot's `robot_id`:
+4. **Add a claim rule** through `POST /api/v2.0/trusted-issuers/<id>/claims`, with the robot's real `robot_id`. A rule without one is stored as an issuer-wide rule that every token from the issuer has to match; see [Harbor Setup](examples/kubernetes/README.md#harbor-setup):
    - `sub` equals `system:serviceaccount:default:default`
 
-   Matching is exact. `system:serviceaccount:*:*` does not match every service account; the token is rejected with 401. Add one rule per service account, for example `system:serviceaccount:default:default` and `system:serviceaccount:team-a:builder`, or pin on a nested claim such as `kubernetes.io.namespace`.
+   Matching is exact. `system:serviceaccount:*:*` does not match every service account; the token is rejected with 401. Each service account needs its own robot and rule, for example one for `system:serviceaccount:default:default` and another for `system:serviceaccount:team-a:builder`: a robot takes one rule per claim path, and a second `sub` rule on the same robot is refused with `409 robot <id> already has claim_path 'sub'`. To admit a whole namespace, pin on a nested claim such as `kubernetes.io.namespace` instead.
 
    Do not add `iss` or `aud` rules. Both belong to the issuer, and Harbor answers `400 claim_path 'iss' is not accepted`.
 
@@ -853,11 +859,14 @@ A Harbor on plain HTTP also needs a containerd registry entry on each node; see 
 |-------|-------|----------|
 | `audience not found in pod spec volume` | Missing RBAC for audience | Apply `rbac-audience.yaml` |
 | `no robots matched your token` | No robot with matching claims | Add an exact `sub` claim rule through the issuer's `/claims` endpoint |
-| `403` from the trusted issuer or robot API | Federated robot account feature gate is off | Set `enable_commercial_federated_robot_accounts` and `enable_project_federated_robot_accounts` to `true` |
+| `403` from the trusted issuer or robot API | Federated robot account feature gate is off | Set `enable_commercial_federated_robot_accounts` to `true`; a project-level robot also needs `enable_project_federated_robot_accounts` |
+| `409 robot <id> already has claim_path 'sub'` | A second `sub` rule on the same robot | One robot per service account |
 | `400 audience is required` | Trusted Issuer created without `audience` | Add the `audience` field |
 | `400 claim_path 'iss' is not accepted` | `iss` or `aud` sent as a claim rule | Remove it; both belong to the issuer |
 | `401 Unauthorized` | JWKS mismatch, wrong audience, or a `sub` rule that is not an exact match | Verify JWKS, the issuer's audience and the exact `sub` value |
 | `trusted issuer <name> has no audience` in the harbor-core log, `401` on pull | Trusted Issuer created before Harbor 2.15.12 without an issuer-level `aud` rule | Set its audience once; see [Upgrading Harbor to 2.15.12](deploy/helm/harbor-credential-provider/README.md#upgrading-harbor-to-21512) |
+
+Flux errors (`serviceaccounts/token`, the audience refusal, a ServiceAccount that is not opted in) are in the [Flux example](examples/flux/#troubleshooting).
 
 ### References
 

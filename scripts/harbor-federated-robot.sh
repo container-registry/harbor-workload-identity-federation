@@ -10,6 +10,10 @@
 # Trusted Issuer without an audience, left over from an upgrade, gets
 # OIDC_AUDIENCE set on it.
 #
+# The robot it creates is project-level, so both
+# enable_commercial_federated_robot_accounts and
+# enable_project_federated_robot_accounts have to be on.
+#
 # This is the half that cannot be tested in a local cluster, so it is scripted
 # for the cloud runs that use a real Harbor. Nothing here touches Kubernetes.
 #

@@ -21,14 +21,14 @@ A=(-u 'admin:<password>' -H "Content-Type: application/json")
 
 # Feature gate, once per Harbor.
 curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
-  -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
+  -d '{"enable_commercial_federated_robot_accounts":true}'
 
 TI=$(jq -n --arg a "$AUD" --arg n gitlab-ci \
   '{name:$n,offline_validation:false,openid_config_url:"https://gitlab.com/.well-known/openid-configuration",audience:$a}' \
-  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r '.id // empty')
 
 RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
-  -d '{"name":"gitlab-ci","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"<project>","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+  -d '{"name":"gitlab-ci","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"<project>","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r '.id // empty')
 
 curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
   -d '{"rules":[{"claim_path":"project_path","value":"<group>/<project>","robot_id":'$RB'}]}'

@@ -24,12 +24,17 @@ jobs:
           TOKEN=$(echo "$RESPONSE" | jq -r '.value')
           echo "TOKEN=$TOKEN" >> $GITHUB_ENV
 
-          # Pretty print the JWT token (header and payload)
+          # JWT segments are unpadded base64url; base64 -d wants padded standard base64.
+          jwt_part() {
+            p=$(echo "$TOKEN" | cut -d'.' -f"$1" | tr '_-' '/+')
+            case $(( ${#p} % 4 )) in 2) p="$p==" ;; 3) p="$p=" ;; esac
+            echo "$p" | base64 -d | jq .
+          }
           echo "=== JWT Header ==="
-          echo "$TOKEN" | cut -d'.' -f1 | base64 -d 2>/dev/null | jq .
+          jwt_part 1
           echo ""
           echo "=== JWT Payload ==="
-          echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+          jwt_part 2
 
       - name: Build and Push Image
         run: |

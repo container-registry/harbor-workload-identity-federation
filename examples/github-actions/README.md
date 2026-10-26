@@ -21,14 +21,14 @@ A=(-u 'admin:<password>' -H "Content-Type: application/json")
 
 # Feature gate, once per Harbor.
 curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
-  -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
+  -d '{"enable_commercial_federated_robot_accounts":true}'
 
 TI=$(jq -n --arg a "$AUD" --arg n github-actions \
   '{name:$n,offline_validation:false,openid_config_url:"https://token.actions.githubusercontent.com/.well-known/openid-configuration",audience:$a}' \
-  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r '.id // empty')
 
 RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
-  -d '{"name":"github-actions","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"<project>","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+  -d '{"name":"github-actions","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"<project>","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r '.id // empty')
 
 curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
   -d '{"rules":[{"claim_path":"repository","value":"<owner>/<repo>","robot_id":'$RB'}]}'
