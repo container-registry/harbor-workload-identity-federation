@@ -1,6 +1,6 @@
 # k3d
 
-k3d runs k3s in Docker. The chart's `k3d` profile is the same as [`k3s`](../k3s/); this page covers the parts specific to running it on a laptop.
+k3d runs k3s in Docker. The chart's `k3d` profile writes the same files as [`k3s`](../k3s/). The difference is the restart: a k3d node is a container running k3s as PID 1 with no init system, so nothing inside it can restart k3s, and k3s reads its `config.yaml.d` drop-in only when it starts. The `k3d` profile therefore writes the files and leaves the restart to you, from the machine running k3d. This page covers that and the other parts specific to running it on a laptop.
 
 ## Cluster
 
@@ -28,11 +28,29 @@ helm upgrade --install harbor-credential-provider \
   oci://8gears.container-registry.com/8gcr/harbor-credential-provider \
   --namespace kube-system \
   --set profile=k3d \
+  --set kubelet.restart=false \
   --set registry.host=harbor.example.com \
   --set registry.audience=harbor.example.com
 
 kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 ```
+
+`kubelet.restart=false` is already the `k3d` default. It is spelled out because chart 0.4.0 and earlier default it to `true` for `k3d` as well, and there the installer tries `systemctl` on a node that has none and crash-loops ([#32](https://github.com/container-registry/harbor-workload-identity-federation/issues/32)).
+
+The rollout completes once every node has the files. The installer log names the step left:
+
+```bash
+kubectl logs -n kube-system -l app.kubernetes.io/name=harbor-credential-provider | grep 'restart disabled'
+```
+
+Restart the cluster so k3s starts against the new config, then wait for the nodes:
+
+```bash
+k3d cluster stop credential-provider-test && k3d cluster start credential-provider-test
+kubectl wait --for=condition=Ready nodes --all --timeout=5m
+```
+
+`docker restart k3d-credential-provider-test-server-0` does the same for one node. Restarting again is only needed after an upgrade that changes the files, and the installer log says so each time.
 
 ## Test
 

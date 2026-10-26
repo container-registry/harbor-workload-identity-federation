@@ -50,10 +50,10 @@ than in somebody's cluster.
 kind installs with `--set kubelet.forceExecStartOverride=true`, without which
 kubelet comes back up ignoring the flags the drop-in set
 ([issue #33](https://github.com/container-registry/harbor-workload-identity-federation/issues/33)).
-k3d installs with `--set kubelet.restart=false` and restarts the cluster
-itself, because a k3d node has no init system for the installer to ask and the
-attempt crashloops the DaemonSet. That is [issue #32](https://github.com/container-registry/harbor-workload-identity-federation/issues/32),
-not a property of the test.
+k3d installs with the profile defaults and restarts the cluster itself. A k3d
+node has no init system for the installer to ask, so the `k3d` profile writes
+the files without a restart and leaves it to whoever runs k3d
+([issue #32](https://github.com/container-registry/harbor-workload-identity-federation/issues/32)).
 
 > [!WARNING]
 > The bottom four install a Kubernetes distribution onto the machine that runs
@@ -92,7 +92,7 @@ Three more are optional, and default to doing nothing in
 distro needs, `restart-nodes` runs between the install and the verification for
 a distro whose kubelet the installer cannot restart from inside the cluster,
 and `dump-node` prints what only the node can answer when a run has failed.
-kind uses the first, k3d the first two, kubeadm the last.
+kind uses the first, k3d the second, kubeadm the last.
 
 Everything after that is
 [`install-test.sh`](install-test.sh), which is distro-agnostic on purpose. Then

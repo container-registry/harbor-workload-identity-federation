@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1254,5 +1255,197 @@ func TestInstallRemovesTheLegacyBinaryAfterKubeletRestarts(t *testing.T) {
 	}
 	if _, err := os.Stat(legacy); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("legacy binary still present after the restart: %v", err)
+	}
+}
+
+// k3d writes exactly what k3s writes. What differs is the restart: a k3d node
+// is a container running k3s as PID 1, so the profile must not try one unless
+// asked to.
+func TestK3dProfileDefaultsToNoKubeletRestart(t *testing.T) {
+	tests := []struct {
+		profile string
+		env     string
+		want    bool
+	}{
+		{profile: "k3d", env: "", want: false},
+		{profile: "k3d", env: "true", want: true},
+		{profile: "k3s", env: "", want: true},
+		{profile: "k3s", env: "false", want: false},
+		{profile: "generic", env: "", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.profile+"/RESTART_KUBELET="+tt.env, func(t *testing.T) {
+			t.Setenv("PROFILE", tt.profile)
+			t.Setenv("REGISTRY_HOST", "harbor.example.com")
+			t.Setenv("RESTART_KUBELET", tt.env)
+			opts, err := optionsFromEnv()
+			if err != nil {
+				t.Fatalf("optionsFromEnv() error: %v", err)
+			}
+			if opts.RestartKubelet != tt.want {
+				t.Fatalf("RestartKubelet = %t, want %t", opts.RestartKubelet, tt.want)
+			}
+		})
+	}
+
+	k3s, err := defaultsForProfile("k3s")
+	if err != nil {
+		t.Fatalf("defaultsForProfile(k3s) error: %v", err)
+	}
+	k3d, err := defaultsForProfile("k3d")
+	if err != nil {
+		t.Fatalf("defaultsForProfile(k3d) error: %v", err)
+	}
+	if !k3d.NoInitSystem {
+		t.Fatal("k3d NoInitSystem = false, want true")
+	}
+	k3d.NoInitSystem = false
+	if k3d != k3s {
+		t.Fatalf("k3d defaults %+v differ from k3s %+v beyond NoInitSystem", k3d, k3s)
+	}
+}
+
+// The default k3d install from issue #32: files written, no restart tried,
+// and the marker still names this install so the readiness probe passes.
+// The pod coming back after the user restarts the node must not try one
+// either, or it would fail on the missing systemctl after all.
+func TestK3dInstallIsReadyWithoutARestart(t *testing.T) {
+	hostRoot := t.TempDir()
+	opts := markerOptions(t, hostRoot, "k3d-install")
+	opts.Profile = "k3d"
+	opts.ConfigureKubelet = true
+	opts.RestartKubelet = false
+	opts.BinDir = "/var/lib/rancher/credentialprovider/bin"
+	opts.ConfigPath = "/var/lib/rancher/credentialprovider/config.yaml"
+	opts.K3sConfigDropInPath = "/etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml"
+
+	calls := 0
+	noSystemctl := func(...string) error { calls++; return errNoSystemctl }
+	restart := func(o options) error { return restartKubeletWith(o, noSystemctl, noSystemctl) }
+
+	for run := 1; run <= 2; run++ {
+		if err := install(opts, restart); err != nil {
+			t.Fatalf("install() run %d error: %v", run, err)
+		}
+		data, err := os.ReadFile(hostPath(opts, opts.InstalledMarker))
+		if err != nil {
+			t.Fatalf("read marker after run %d: %v", run, err)
+		}
+		want := "install-id=k3d-install\nkubelet-restarted=false\n"
+		if !strings.HasPrefix(string(data), want) {
+			t.Fatalf("marker after run %d = %q, want prefix %q", run, data, want)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("systemctl called %d times on a k3d node, want 0", calls)
+	}
+	if _, err := os.Stat(hostPath(opts, opts.K3sConfigDropInPath)); err != nil {
+		t.Fatalf("k3s drop-in not written: %v", err)
+	}
+}
+
+// Any profile on a node without systemctl: one error that names the next
+// step, and no marker, so the pod stays not Ready.
+func TestRestartOnANodeWithoutSystemctlNamesTheNextStep(t *testing.T) {
+	missing := func(...string) error {
+		return fmt.Errorf("nsenter systemctl daemon-reload: %w", errNoSystemctl)
+	}
+	tests := []struct {
+		name     string
+		profile  string
+		nodeName string
+		want     []string
+	}{
+		{
+			name:     "k3d with restarts forced on",
+			profile:  "k3d",
+			nodeName: "k3d-wif-fix32-server-0",
+			want: []string{
+				"RESTART_KUBELET=false",
+				"docker restart k3d-wif-fix32-server-0",
+				"k3d cluster stop wif-fix32 && k3d cluster start wif-fix32",
+			},
+		},
+		{
+			name:     "k3s profile on a k3d node",
+			profile:  "k3s",
+			nodeName: "k3d-dev-agent-1",
+			want:     []string{"docker restart k3d-dev-agent-1", "k3d cluster stop dev"},
+		},
+		{
+			name:     "generic profile in some other container",
+			profile:  "generic",
+			nodeName: "worker-1",
+			want:     []string{"RESTART_KUBELET=false", "Restart or roll nodes"},
+		},
+		{
+			// Service discovery asks systemd which unit runs, and reads a
+			// missing systemctl as "not running" unless it is checked first.
+			name:     "rke2 with no service name",
+			profile:  "rke2",
+			nodeName: "rke2-node-1",
+			want:     []string{"RESTART_KUBELET=false", "Restart or roll nodes"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hostRoot := t.TempDir()
+			opts := markerOptions(t, hostRoot, "abc")
+			opts.Profile = tt.profile
+			opts.NodeName = tt.nodeName
+			opts.RestartKubelet = true
+			opts.ConfigureKubelet = true
+			opts.K3sConfigDropInPath = "/etc/rancher/k3s/config.yaml.d/99-harbor-credential-provider.yaml"
+
+			err := install(opts, func(o options) error { return restartKubeletWith(o, missing, missing) })
+			if !errors.Is(err, errNoSystemctl) {
+				t.Fatalf("install() error = %v, want errNoSystemctl", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error does not say %q:\n%v", want, err)
+				}
+			}
+			if _, statErr := os.Stat(hostPath(opts, opts.InstalledMarker)); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("marker after a failed restart: %v, want not-exist", statErr)
+			}
+			if !parkAfter(options{SleepForever: true}, err) {
+				t.Fatal("parkAfter() = false, want the pod parked instead of crash-looping")
+			}
+		})
+	}
+}
+
+// Only a missing systemctl parks the pod. A restart that ran and failed may
+// work next time, so it still exits and the DaemonSet retries it.
+func TestParkAfterOnlyForAMissingSystemctl(t *testing.T) {
+	failed := errors.New("systemctl restart kubelet: exit status 1")
+	if parkAfter(options{SleepForever: true}, failed) {
+		t.Fatal("parkAfter() = true for a restart that ran and failed")
+	}
+	if parkAfter(options{SleepForever: false}, errNoSystemctl) {
+		t.Fatal("parkAfter() = true with SLEEP_FOREVER off, which would leave a one-shot run hanging")
+	}
+	if restartFailed(options{}, failed) != failed {
+		t.Fatal("restartFailed() rewrote an error that was not a missing systemctl")
+	}
+}
+
+// util-linux nsenter exits 127 when the program it execs is missing, which is
+// what a k3d node reports. Any other status means systemctl ran.
+func TestSystemctlErrorRecognisesNsenterExit127(t *testing.T) {
+	exitWith := func(code int) error {
+		return exec.Command("sh", "-c", fmt.Sprintf("exit %d", code)).Run()
+	}
+	notFound := exitWith(127)
+	if err := systemctlError("nsenter systemctl", []string{"daemon-reload"}, notFound, nsenterExitedNotFound(notFound)); !errors.Is(err, errNoSystemctl) {
+		t.Fatalf("exit 127: %v, want errNoSystemctl", err)
+	}
+	failed := exitWith(1)
+	if err := systemctlError("nsenter systemctl", []string{"restart", "k3s"}, failed, nsenterExitedNotFound(failed)); errors.Is(err, errNoSystemctl) {
+		t.Fatalf("exit 1 read as a missing systemctl: %v", err)
+	}
+	if err := systemctlError("systemctl", []string{"daemon-reload"}, exec.ErrNotFound, true); !errors.Is(err, errNoSystemctl) {
+		t.Fatalf("systemctl not in PATH: %v, want errNoSystemctl", err)
 	}
 }

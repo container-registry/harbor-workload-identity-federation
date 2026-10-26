@@ -180,7 +180,8 @@
           "type": "boolean"
         },
         "restart": {
-          "type": "boolean"
+          "description": "Restart kubelet after installing. null takes the profile default: false for k3d, true for every other profile.",
+          "type": ["boolean", "null"]
         },
         "serviceName": {
           "type": "string"
