@@ -71,11 +71,15 @@ kubelet:
   # -- Configure kubelet to use the credential provider path where supported by the selected profile.
   configure: true
   # -- Whether to restart kubelet after installing the credential provider.
-  # Enabled by default so Helm install makes the node ready immediately.
-  # maxUnavailable below serializes this across an upgrade but not across the
-  # first install, when the DaemonSet controller places a pod on every node at
-  # once. See "First Install" in the chart README for the staged alternatives.
-  restart: true
+  # Empty (null) takes the profile default: on for every profile except k3d,
+  # so Helm install makes the node ready immediately. A k3d node is a container
+  # running k3s as PID 1 with no init system, so nothing inside it can restart
+  # k3s: the installer writes the files and logs the `docker restart` or
+  # `k3d cluster stop/start` to run from the host.
+  # maxUnavailable below serializes restarts across an upgrade but not across
+  # the first install, when the DaemonSet controller places a pod on every node
+  # at once. See "First Install" in the chart README for the staged alternatives.
+  restart: null
   # -- Override kubelet service name. Defaults by profile when empty.
   serviceName: ""
   # -- Override systemd drop-in path for generic/kind/gke/sks/custom profiles.

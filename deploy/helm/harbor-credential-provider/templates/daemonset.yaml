@@ -50,6 +50,12 @@ spec:
         {{- include "harbor-credential-provider.installerEnv" . | nindent 8 }}
         - name: SLEEP_FOREVER
           value: {{ .Values.installer.sleep | quote }}
+        {{- /* Only names the node in the restart instructions the installer
+               logs, so it stays out of the install ID like SLEEP_FOREVER. */}}
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         - name: INSTALLED_MARKER
           value: {{ .Values.installer.installedMarker | quote }}
         - name: INSTALL_ID

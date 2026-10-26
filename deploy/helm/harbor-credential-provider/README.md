@@ -45,7 +45,7 @@ The profile decides the host paths and how kubelet gets told about them.
 |---------|-------|------------------|--------|
 | `generic` | kubeadm and other systemd nodes | `/usr/local/bin/credential-providers` | `/etc/kubernetes/credential-providers/config.yaml` |
 | `eks`, `aws` | EKS AL2023. Keeps the existing ECR provider entry | `/etc/eks/image-credential-provider` | `/etc/eks/image-credential-provider/config.json` |
-| `k3s`, `k3d` | k3s and k3d | `/var/lib/rancher/credentialprovider/bin` | `/var/lib/rancher/credentialprovider/config.yaml` |
+| `k3s`, `k3d` | k3s and k3d. `k3d` does not restart k3s, see below | `/var/lib/rancher/credentialprovider/bin` | `/var/lib/rancher/credentialprovider/config.yaml` |
 | `rke2` | RKE2 server and agent nodes | `/var/lib/rancher/credentialprovider/bin` | `/var/lib/rancher/credentialprovider/config.yaml` |
 | `kind` | kind node containers | `/var/lib/kubelet/credential-provider` | `/var/lib/kubelet/credential-provider-config.yaml` |
 | `gke` | GKE Standard, best effort | same as `generic` | same as `generic` |
@@ -57,6 +57,8 @@ The profile decides the host paths and how kubelet gets told about them.
 `custom` requires both paths. The values schema rejects the install if either is empty.
 
 `rke2`, `aks`, `microk8s` and `sks` each wire kubelet the way their distribution expects, because none of them reads the `KUBELET_EXTRA_ARGS` drop-in that `generic` writes. `rke2` writes a new drop-in file. `aks` and `microk8s` edit a file the distribution owns, so they fail the install when it is not there rather than reporting success on a node they did not change. `sks` copies the `ExecStart` from the SKS drop-in into one of its own that sorts after it, and fails the same way when `sks.conf` is missing or holds no `ExecStart` it can parse. Per-distribution notes are in [`examples/kubernetes/`](../../../examples/kubernetes/).
+
+On `k3d`, a node is a container running k3s as PID 1 with no init system, and k3s reads its `config.yaml.d` drop-in only when it starts. Nothing inside the node can restart it, so the `k3d` profile defaults `kubelet.restart` to `false`: the pod turns Ready once the files are written, and its log names the command to run from the machine running k3d, `k3d cluster stop <cluster> && k3d cluster start <cluster>` or `docker restart <node>`. Setting `kubelet.restart=true` there fails the install once with the same instructions.
 
 On `kind`, check that the live kubelet command line inside the node container has `--image-credential-provider-bin-dir` and `--image-credential-provider-config`. If pulls fail with `no basic auth credentials` and those flags are missing, kind did not pick up `KUBELET_EXTRA_ARGS`; reinstall with `--set kubelet.forceExecStartOverride=true`, which rewrites the kubelet `ExecStart` line instead.
 
@@ -95,7 +97,7 @@ On `kind`, check that the live kubelet command line inside the node container ha
 | Key | Default | Description |
 |-----|---------|-------------|
 | `kubelet.configure` | `true` | Point kubelet at the provider. Turn off if you manage kubelet flags yourself. |
-| `kubelet.restart` | `true` | Restart kubelet after installing, so the node works without a manual roll. |
+| `kubelet.restart` | by profile: `false` on `k3d`, `true` elsewhere | Restart kubelet after installing, so the node works without a manual roll. Left empty (`null`), the profile decides. A node with no `systemctl` fails the install once with the next step in the log instead of crash-looping. |
 | `kubelet.serviceName` | by profile | systemd unit to restart. |
 | `kubelet.systemdDropInPath` | by profile | Drop-in written for `generic`, `kind`, `gke`, `sks`, and `custom`. On `sks` its file name has to sort after `sks.conf`. |
 | `kubelet.k3sConfigDropInPath` | by profile | Drop-in written for `k3s` and `k3d`. |
@@ -157,7 +159,7 @@ kubectl rollout status daemonset/harbor-credential-provider -n kube-system
 
 ## First Install
 
-`maxUnavailable` bounds updates, not creation. When the DaemonSet is created, the controller schedules an installer pod on every eligible node at once, and with the default `kubelet.restart=true` those pods restart kubelet across the cluster at roughly the same time. Readiness does not help either: it gates how a rolling *update* advances, and there is no update here. Nothing in the DaemonSet API bounds pod creation, so the chart cannot serialize the first install for you, whatever it puts in `updateStrategy`. Kubelet restarts are quick and running containers survive them, but on a large cluster the nodes do go `NotReady` together for a few seconds.
+`maxUnavailable` bounds updates, not creation. When the DaemonSet is created, the controller schedules an installer pod on every eligible node at once, and with `kubelet.restart=true`, the default on every profile but `k3d`, those pods restart kubelet across the cluster at roughly the same time. Readiness does not help either: it gates how a rolling *update* advances, and there is no update here. Nothing in the DaemonSet API bounds pod creation, so the chart cannot serialize the first install for you, whatever it puts in `updateStrategy`. Kubelet restarts are quick and running containers survive them, but on a large cluster the nodes do go `NotReady` together for a few seconds.
 
 `helm install` prints this same warning in its notes whenever `kubelet.restart` is on, so it is hard to walk into by accident. Two ways to avoid it, both using values the chart already has.
 

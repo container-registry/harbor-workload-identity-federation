@@ -288,6 +288,13 @@ tasks:
           --set kubelet.configure=false
         says "readinessProbe.enabled=false" "The readiness probe is disabled" \
           --set readinessProbe.enabled=false
+        # k3d defaults to no restart: its node has no init system to ask.
+        says "profile k3d" "k3d cluster stop <cluster> && k3d cluster start <cluster>" --set profile=k3d
+        silent_on "profile k3d" "kubelet restart included" --set profile=k3d
+        silent_on "profile k3d" "this is a first install" --set profile=k3d
+        says "profile k3d with kubelet.restart=true" "kubelet restart included" \
+          --set profile=k3d --set kubelet.restart=true
+        silent_on "profile k3s" "k3d cluster stop" --set profile=k3s
         says "the defaults" "The chart created"
         says "nodeAudienceRbac.create=false" "Create equivalent RBAC" \
           --set nodeAudienceRbac.create=false

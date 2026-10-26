@@ -79,6 +79,7 @@ type options struct {
 	SleepForever          bool
 	InstalledMarker       string
 	InstallID             string
+	NodeName              string
 }
 
 type profileDefaults struct {
@@ -93,6 +94,10 @@ type profileDefaults struct {
 	MicroK8sArgsPath     string
 	SKSDropInPath        string
 	PreserveECRProvider  bool
+	// NoInitSystem marks a node that runs its Kubernetes distribution as PID 1
+	// with no service manager behind it, so nothing on the node can restart
+	// kubelet for the installer. Restarts default to off there.
+	NoInitSystem bool
 }
 
 type credentialProviderConfig struct {
@@ -141,7 +146,11 @@ func main() {
 	}
 
 	if err := run(opts); err != nil {
-		exit(err)
+		if !parkAfter(opts, err) {
+			exit(err)
+		}
+		fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
+		fmt.Fprintln(os.Stderr, "[ERROR] Not retrying, because every retry would fail the same way. The pod stays up and not Ready until it is replaced.")
 	}
 
 	if opts.SleepForever {
@@ -149,6 +158,15 @@ func main() {
 			time.Sleep(time.Hour)
 		}
 	}
+}
+
+// parkAfter reports whether the pod should stay up after a failed run instead
+// of exiting. Only for a node with no systemctl: the DaemonSet restarts an
+// exited container, and every rerun would fail the same way, which buries the
+// one message that names the next step under a CrashLoopBackOff. Any other
+// error may be transient, so it still exits and gets retried.
+func parkAfter(opts options, err error) bool {
+	return opts.SleepForever && errors.Is(err, errNoSystemctl)
 }
 
 func exit(err error) {
@@ -214,7 +232,7 @@ func optionsFromEnv() (options, error) {
 		MatchImages:           listValue(env("MATCH_IMAGES", registryHost)),
 		CacheDuration:         env("CACHE_DURATION", "1h"),
 		ConfigureKubelet:      boolEnv("CONFIGURE_KUBELET", true),
-		RestartKubelet:        boolEnv("RESTART_KUBELET", true),
+		RestartKubelet:        boolEnv("RESTART_KUBELET", !defaults.NoInitSystem),
 		ForceKubeletExecStart: boolEnv("FORCE_KUBELET_EXECSTART", false),
 		KubeletService:        env("KUBELET_SERVICE", defaults.KubeletService),
 		SystemdDropInPath:     env("SYSTEMD_DROP_IN_PATH", defaults.SystemdDropInPath),
@@ -227,6 +245,7 @@ func optionsFromEnv() (options, error) {
 		SleepForever:          boolEnv("SLEEP_FOREVER", false),
 		InstalledMarker:       env("INSTALLED_MARKER", defaultInstalledMarker),
 		InstallID:             env("INSTALL_ID", standaloneInstallID),
+		NodeName:              env("NODE_NAME", ""),
 	}, nil
 }
 
@@ -247,7 +266,15 @@ func defaultsForProfile(profile string) (profileDefaults, error) {
 			KubeletService:      "kubelet",
 			PreserveECRProvider: true,
 		}, nil
-	case "k3s", "k3d":
+	case "k3d":
+		// The k3s paths, on a node that is a container running k3s as PID 1.
+		// k3s rereads config.yaml.d only at startup, and a pod cannot restart
+		// the PID 1 of the node it runs on, so the node is restarted from the
+		// machine running k3d instead.
+		defaults, err := defaultsForProfile("k3s")
+		defaults.NoInitSystem = true
+		return defaults, err
+	case "k3s":
 		return profileDefaults{
 			BinDir:              "/var/lib/rancher/credentialprovider/bin",
 			ConfigPath:          "/var/lib/rancher/credentialprovider/config.yaml",

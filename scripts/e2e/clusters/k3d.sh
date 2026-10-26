@@ -15,11 +15,8 @@ source "${E2E_ROOT}/versions.env"
 profile() { echo k3d; }
 
 # A k3d node runs k3s as its own PID 1 with no init system behind it, so the
-# installer has nothing to ask for a restart and its nsenter systemctl call
-# fails with exit 127. Write the files and restart the node from out here
-# instead. See issue #32.
-install-args() { echo "--set kubelet.restart=false"; }
-
+# k3d profile only writes the files and the node is restarted from out here.
+# No install-args on purpose: the job tests the profile default. See issue #32.
 restart-nodes() {
   log "restarting the cluster so k3s rereads its config"
   k3d cluster stop "${E2E_CLUSTER_NAME}"

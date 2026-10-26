@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -696,9 +697,27 @@ func setMicroK8sKubeletArgs(content, binDir, configPath string) string {
 	return strings.Join(kept, "\n")
 }
 
+// errNoSystemctl is a node with no systemctl to ask for a restart: a k3d node,
+// or any other container running its distribution as PID 1. No retry changes
+// that, so it is told apart from a restart that failed.
+var errNoSystemctl = errors.New("systemctl not found on the node")
+
+// nsenterExecNotFound is what util-linux nsenter exits with when the program
+// it was told to run does not exist in the node's mount namespace.
+const nsenterExecNotFound = 127
+
+// k3dNodeName is how k3d names a node container, and so the Kubernetes node.
+var k3dNodeName = regexp.MustCompile(`^k3d-(.+)-(?:server|agent)-[0-9]+$`)
+
 func restartKubelet(opts options) error {
+	return restartKubeletWith(opts, systemctl)
+}
+
+// restartKubeletWith takes systemctl as a parameter so a test can stand in for
+// a node that has none.
+func restartKubeletWith(opts options, systemctl func(args ...string) error) error {
 	if !opts.RestartKubelet {
-		fmt.Println("[WARN] Kubelet restart disabled. Restart or roll nodes before testing image pulls.")
+		fmt.Printf("[WARN] Kubelet restart disabled. %s\n", manualRestartSteps(opts))
 		return nil
 	}
 
@@ -710,10 +729,41 @@ func restartKubelet(opts options) error {
 	fmt.Printf("[INFO] Restarting %s\n", strings.Join(services, " "))
 	if opts.ConfigureKubelet && opts.Profile != "eks" && opts.Profile != "aws" {
 		if err := systemctl("daemon-reload"); err != nil {
-			return err
+			return restartFailed(opts, err)
 		}
 	}
-	return systemctl(append([]string{"restart"}, services...)...)
+	return restartFailed(opts, systemctl(append([]string{"restart"}, services...)...))
+}
+
+// restartFailed turns a node without systemctl into an error that names the
+// next step. The files are written by then, so the restart is all that is
+// left, and it has to come from outside the node.
+func restartFailed(opts options, err error) error {
+	if !errors.Is(err, errNoSystemctl) {
+		return err
+	}
+	return fmt.Errorf("%w. Nothing on this node can restart kubelet for the installer, "+
+		"and the files it needs are already in place. Reinstall with kubelet.restart=false "+
+		"(RESTART_KUBELET=false), then restart the node yourself. %s", err, manualRestartSteps(opts))
+}
+
+// manualRestartSteps says how to get kubelet onto the new configuration when
+// the installer does not restart it.
+func manualRestartSteps(opts options) string {
+	match := k3dNodeName.FindStringSubmatch(opts.NodeName)
+	if opts.Profile != "k3d" && match == nil {
+		return "Restart or roll nodes before testing image pulls."
+	}
+	node, cluster := "<node>", "<cluster>"
+	if opts.NodeName != "" {
+		node = opts.NodeName
+	}
+	if match != nil {
+		cluster = match[1]
+	}
+	return fmt.Sprintf("k3s reads config.yaml.d only when it starts, and a k3d node has no init system "+
+		"to restart it. Next step, from the machine running k3d: docker restart %s, "+
+		"or for every node at once: k3d cluster stop %s && k3d cluster start %s", node, cluster, cluster)
 }
 
 // kubeletServices lists the units that have to come back before the node runs
@@ -749,16 +799,30 @@ func runSystemctl(stdout, stderr io.Writer, args ...string) error {
 	if err := cmd.Run(); err == nil {
 		return nil
 	} else if !errors.Is(err, exec.ErrNotFound) {
-		return fmt.Errorf("nsenter systemctl %s: %w", strings.Join(args, " "), err)
+		return systemctlError("nsenter systemctl", args, err, nsenterExitedNotFound(err))
 	}
 
 	cmd = exec.Command("systemctl", args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
+		return systemctlError("systemctl", args, err, errors.Is(err, exec.ErrNotFound))
 	}
 	return nil
+}
+
+func nsenterExitedNotFound(err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ExitCode() == nsenterExecNotFound
+}
+
+// systemctlError wraps errNoSystemctl when systemctl never ran at all, the one
+// failure a retry cannot fix.
+func systemctlError(command string, args []string, err error, missing bool) error {
+	if missing {
+		return fmt.Errorf("%s %s: %w (%v)", command, strings.Join(args, " "), errNoSystemctl, err)
+	}
+	return fmt.Errorf("%s %s: %w", command, strings.Join(args, " "), err)
 }
 
 func detectK3sService(opts options, fallback string) string {

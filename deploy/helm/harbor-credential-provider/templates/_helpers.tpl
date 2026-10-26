@@ -74,6 +74,21 @@ Registry audience (defaults to registry.host).
 {{- end }}
 
 {{/*
+Whether the installer restarts kubelet, as "true" or "false". kubelet.restart
+left null takes the profile default. k3d is the one profile that defaults to
+false: its node is a container running k3s as PID 1, with no init system the
+installer could ask for a restart. `default` cannot be used here, because it
+treats an explicit false the same as unset.
+*/}}
+{{- define "harbor-credential-provider.kubeletRestart" -}}
+{{- if kindIs "bool" .Values.kubelet.restart }}
+{{- .Values.kubelet.restart }}
+{{- else }}
+{{- ne .Values.profile "k3d" }}
+{{- end }}
+{{- end }}
+
+{{/*
 Node audience RBAC resource name.
 */}}
 {{- define "harbor-credential-provider.nodeAudienceRoleName" -}}
@@ -162,7 +177,7 @@ changes the node install.
 - name: CONFIGURE_KUBELET
   value: {{ .Values.kubelet.configure | quote }}
 - name: RESTART_KUBELET
-  value: {{ .Values.kubelet.restart | quote }}
+  value: {{ include "harbor-credential-provider.kubeletRestart" . | quote }}
 - name: KUBELET_SERVICE
   value: {{ .Values.kubelet.serviceName | quote }}
 - name: SYSTEMD_DROP_IN_PATH
