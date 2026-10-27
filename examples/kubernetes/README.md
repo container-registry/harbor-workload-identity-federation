@@ -22,6 +22,8 @@ Pick your distribution. The pages differ because distributions disagree about wh
 | OpenShift | Not supported; the page explains what it would take | [`openshift/`](openshift/) |
 | GKE Autopilot | Not possible. No privileged host access, no kubelet control | — |
 
+Deploying with Flux? [`../flux/`](../flux/) builds on this: Flux pulls its `OCIRepository` and scans its `ImageRepository` with a ServiceAccount token too.
+
 ## The Three Things That Have To Line Up
 
 Most failures are one of these, and they are easier to check than to debug.
@@ -34,7 +36,10 @@ Most failures are one of these, and they are easier to check than to debug.
 
 **2. The node may ask for the audience.** A node gets a token for your Harbor audience only if the node audience RBAC grants `request-serviceaccounts-token-audience` on it to `system:nodes`. The chart creates that RBAC; [`rbac-audience.yaml`](rbac-audience.yaml) is the standalone version. Nothing has to be added to the API server for it.
 
-If you set this up from an earlier version of these pages, you will have your registry in the API server's `--api-audiences` as well. Take it out. That flag lists the audiences the API server accepts on tokens presented to it, so leaving your registry there means a token Harbor is given also works as a cluster credential.
+Leave your registry out of the API server's `--api-audiences`. If you set this up from an earlier version of these pages, it is in there; take it out. Kubelet and Flux pulls both work without it (checked on k3s 1.34 and 1.35), and with it two things go wrong:
+
+- The flag lists the audiences the API server accepts on tokens presented to it. With the registry listed, a token Harbor is given also works as a cluster credential. Without it, the API server answers such a token with `401`.
+- Default ServiceAccount tokens then carry the registry audience as well, Flux's own included. Flux 2.10 refuses to request a token for an audience its own token holds, so keyless Flux pulls fail with `audience '<registry>' is not allowed as it is intended for the local kubernetes cluster`. See [`../flux/`](../flux/).
 
 **3. Harbor expects the same audience string.** The audience is just an agreed identifier. It does not have to be a domain. What matters is that the same value appears in the kubelet config, the RBAC, and the Harbor Trusted Issuer. Using the registry hostname makes it obvious who the token is for, which is why the examples do that.
 
@@ -54,8 +59,10 @@ Upgrading from a Harbor older than 2.15.12 with an existing Trusted Issuer? Chec
 
 ```bash
 curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
-  -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
+  -d '{"enable_commercial_federated_robot_accounts":true}'
 ```
+
+That is enough for system-level robots like the one below. A project-level robot (`level: project`) also needs `enable_project_federated_robot_accounts`; without it Harbor answers `403 project-level federated robot accounts feature is not enabled`.
 
 **2. Create the Trusted Issuer.** Find the cluster's service account issuer:
 
@@ -70,7 +77,7 @@ echo "$ISS"
 JWKS=$(kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)")
 TI=$(jq -n --argjson k "$JWKS" --arg iss "$ISS" --arg a "$AUD" --arg n my-cluster \
   '{name:$n,issuer:$iss,offline_validation:true,jwks_keys:$k,audience:$a}' \
-  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r '.id // empty')
 ```
 
 If the issuer is publicly reachable, as on EKS, GKE and AKS, let Harbor validate online instead. Give it the discovery URL and no keys. `ISS` is the issuer URL from the command above. Harbor reads the supported claims from the discovery document:
@@ -78,14 +85,14 @@ If the issuer is publicly reachable, as on EKS, GKE and AKS, let Harbor validate
 ```bash
 TI=$(jq -n --arg iss "$ISS" --arg a "$AUD" --arg n my-cluster \
   '{name:$n,offline_validation:false,openid_config_url:($iss+"/.well-known/openid-configuration"),audience:$a}' \
-  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r '.id // empty')
 ```
 
 **3. Create the federated robot account.** It points at the issuer with `trusted_issuer_id` and carries the permissions. This one can pull from the `wif` project:
 
 ```bash
 RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
-  -d '{"name":"my-cluster","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"wif","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+  -d '{"name":"my-cluster","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"wif","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r '.id // empty')
 ```
 
 **4. Add the claim rule.** Claim rules attach through the issuer's `/claims` endpoint, with the `robot_id` they belong to:
@@ -95,9 +102,11 @@ curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
   -d '{"rules":[{"claim_path":"sub","value":"system:serviceaccount:default:default","robot_id":'$RB'}]}'
 ```
 
+Send the robot's real ID. Harbor stores a rule without `robot_id` as an issuer-wide rule that every token from the issuer has to match, with a `201` and no warning, so a failed robot create followed by this call locks out every other service account of the cluster. The snippets read IDs with `jq -r '.id // empty'`: a failed create leaves the variable empty, the claim body becomes invalid JSON, and Harbor rejects it with `422` instead of storing that rule. Stop and fix the failed create before going on.
+
 The `iss` and `aud` claims are not rules. Both belong to the issuer, and Harbor rejects them as claim paths (`400 claim_path 'iss' is not accepted`). Rules cover the other claims in the token, such as `sub`, `repository`, or a nested path like `kubernetes.io.namespace`. On a Trusted Issuer using online validation, each claim path has to appear in the issuer's `claims_supported`.
 
-Matching is exact. `sub` takes the full string, `system:serviceaccount:<namespace>:<service-account>`, and `*` is not a wildcard. One rule per service account you want to allow.
+Matching is exact. `sub` takes the full string, `system:serviceaccount:<namespace>:<service-account>`, and `*` is not a wildcard. One robot and one rule per service account you want to allow: a robot takes one rule per claim path, and a second `sub` rule on the same robot is refused with `409 robot <id> already has claim_path 'sub'`.
 
 The UI path for these steps was not rechecked against 2.15, so this page uses the API. The screenshots in the root README may show older labels.
 
@@ -139,4 +148,4 @@ The Harbor side is documented in full: [Federated Identity Provider for Workload
 | [`rke2/config.yaml`](rke2/config.yaml) | The RKE2 config drop-in the installer writes |
 | [`kind-kubelet-systemd-dropin.conf`](kind-kubelet-systemd-dropin.conf) | The kind `ExecStart` override, for reference |
 
-The first four use `harbor.example.com` as the registry host and the audience; replace it with yours. The last three are kubelet wiring only and contain no registry reference. `pod-example.yaml` also needs an image that exists in your Harbor, or the pod sits in `ImagePullBackOff` and looks like a credential provider failure.
+The first three use `harbor.example.com` as the registry host and the audience; replace it with yours. The other four are cluster and kubelet wiring only and contain no registry reference. `pod-example.yaml` also needs an image that exists in your Harbor, or the pod sits in `ImagePullBackOff` and looks like a credential provider failure.

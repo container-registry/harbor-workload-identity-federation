@@ -1,0 +1,40 @@
+# The content of the OCI artifact Flux pulls. Push it with
+#   flux push artifact oci://harbor.example.com/platform/podinfo-deploy:v1 \
+#     --path=examples/flux/apps --source=<repo-url> --revision=<rev>
+#
+# The pod has no imagePullSecrets. kubelet asks harbor-credential-provider for
+# a credential, which hands Harbor a token for the podinfo ServiceAccount, so
+# Harbor needs a claim rule sub == system:serviceaccount:apps:podinfo.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: podinfo
+  namespace: apps
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podinfo
+  template:
+    metadata:
+      labels:
+        app: podinfo
+    spec:
+      serviceAccountName: podinfo
+      containers:
+        - name: podinfo
+          image: harbor.example.com/platform/podinfo:6.15.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9898
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http

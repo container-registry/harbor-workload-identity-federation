@@ -1,0 +1,66 @@
+# Flux objects that pull from Harbor with a ServiceAccount token instead of a
+# secretRef. Replace harbor.example.com and the `platform` project with yours.
+#
+# Harbor needs a federated robot with a claim rule
+#   sub == system:serviceaccount:apps:flux-oci
+# for the Flux side, and another one for the workload in apps/podinfo.yaml.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-oci
+  namespace: apps
+  annotations:
+    # Both are required. Without them Flux does not mint a token, falls back to
+    # imagePullSecrets or anonymous access, and Harbor answers 401.
+    credential.auth.fluxcd.io/provider: kubernetes
+    credential.auth.fluxcd.io/type: jwt
+    # Optional. The default audience is the registry host, which has to equal
+    # the audience of the Harbor Trusted Issuer.
+    # credential.auth.fluxcd.io/audiences: harbor.example.com
+    # Optional. Sends Basic auth with the token as the password instead of a
+    # Bearer token. Harbor accepts both.
+    # credential.auth.fluxcd.io/username: jwt
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: apps
+  namespace: apps
+spec:
+  interval: 1m
+  url: oci://harbor.example.com/platform/podinfo-deploy
+  ref:
+    tag: v1
+  provider: generic
+  serviceAccountName: flux-oci
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: podinfo
+  namespace: apps
+spec:
+  interval: 5m
+  image: harbor.example.com/platform/podinfo
+  provider: generic
+  serviceAccountName: flux-oci
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: apps
+spec:
+  interval: 10m
+  sourceRef:
+    kind: OCIRepository
+    name: apps
+  path: ./
+  prune: true
+  wait: true
+  timeout: 3m

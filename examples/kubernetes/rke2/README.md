@@ -6,7 +6,7 @@ RKE2 runs kubelet inside the `rke2-agent` process rather than as its own systemd
 
 ## Audience
 
-kubelet asks the API server for a token whose audience is `registry.audience`. What decides whether it gets one is the node audience RBAC, which the chart creates. There is no server-node setting to add, and in particular the audience does not go in `kube-apiserver-arg` as `--api-audiences`: that flag lists what the API server accepts on tokens presented to it, not what it issues.
+kubelet asks the API server for a token whose audience is `registry.audience`. What decides whether it gets one is the node audience RBAC, which the chart creates. There is no server-node setting to add, and in particular the audience does not go in `kube-apiserver-arg` as `--api-audiences`: that flag lists what the API server accepts on tokens presented to it, and the default audience of tokens issued without one. It plays no part in kubelet's request for the registry audience. Putting the registry there makes Harbor tokens valid cluster credentials and stops keyless Flux pulls; see [The Three Things That Have To Line Up](../README.md#the-three-things-that-have-to-line-up).
 
 ## Harbor Side
 

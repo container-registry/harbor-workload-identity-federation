@@ -69,16 +69,16 @@ A=(-u 'admin:<password>' -H "Content-Type: application/json")
 
 # Feature gate, once per Harbor.
 curl -s "${A[@]}" -X PUT "https://$H/api/v2.0/configurations" \
-  -d '{"enable_commercial_federated_robot_accounts":true,"enable_project_federated_robot_accounts":true}'
+  -d '{"enable_commercial_federated_robot_accounts":true}'
 
 JWKS=$(kubectl get --raw "$(kubectl get --raw /.well-known/openid-configuration | jq -r .jwks_uri)")
 ISS=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
 TI=$(jq -n --argjson k "$JWKS" --arg iss "$ISS" --arg a "$AUD" --arg n talos \
   '{name:$n,issuer:$iss,offline_validation:true,jwks_keys:$k,audience:$a}' \
-  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r .id)
+  | curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers" -d @- | jq -r '.id // empty')
 
 RB=$(curl -s "${A[@]}" -X POST "https://$H/api/v2.0/robots" \
-  -d '{"name":"talos","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"<project>","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r .id)
+  -d '{"name":"talos","level":"system","duration":-1,"trusted_issuer_id":'$TI',"permissions":[{"kind":"project","namespace":"<project>","access":[{"resource":"repository","action":"pull"}]}]}' | jq -r '.id // empty')
 
 curl -s "${A[@]}" -X POST "https://$H/api/v2.0/trusted-issuers/$TI/claims" \
   -d '{"rules":[{"claim_path":"sub","value":"system:serviceaccount:demo:harbor-puller","robot_id":'$RB'}]}'
